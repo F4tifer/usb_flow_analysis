@@ -1,0 +1,16 @@
+services:
+  usb-flow-analysis:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: usb-flow-analysis:latest
+    container_name: usb-flow-analysis
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      USB_ANALYSIS_MAX_UPLOAD_BYTES: "536870912"
+      USB_ANALYSIS_FLOW_CACHE_MAX: "16"
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/baselines:/app/data/baselines

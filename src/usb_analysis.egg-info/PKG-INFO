@@ -1,0 +1,202 @@
+Metadata-Version: 2.4
+Name: usb-analysis
+Version: 0.1.0
+Summary: Stream reader and analyzer for Linux USB mmap PCAP (usbmon) captures.
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: typer>=0.12
+Requires-Dist: rich>=13.0
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: uvicorn[standard]>=0.32.0
+Requires-Dist: trezor>=0.20.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"
+
+# usb-analysis
+
+Streamovaná analýza USB komunikace z **PCAP souborů** zachycených na Linuxu přes usbmon ve formátu **LINKTYPE_USB_LINUX_MMAPPED** (tcpdump / Wireshark „Linux cooked capture“ / `usbmon`). Nezávislé na instalaci Wireshark/tshark — čistě Python.
+
+Nástroj má tři vrstvy:
+
+1. **Parser + dump** — surové pakety z PCAPu, filtry, JSONL/CSV export.
+2. **Flow analyzer** — chronologický stream `command ↔ response` se severitou, kauzálními hinty, detekcí timeoutů, reconnectů, CRC chyb.
+3. **Deep analyzer** — segmentace, ML-light scoring proti naučenému baseline, mining pravidel napříč více capture soubory.
+
+## Rychlý start
+
+```bash
+cd USB_analysis
+python3 -m venv .venv
+source .venv/bin/activate         # Windows: .venv\Scripts\activate
+pip install -e ".[dev]"
+```
+
+Webové UI:
+
+```bash
+uvicorn usb_analysis.web.app:app --reload
+# http://127.0.0.1:8000
+```
+
+V UI nahrajte PCAP (drag-and-drop nebo `Upload`) a postupně klikněte:
+
+- **Načíst záznamy** — tabulka paketů (technický pohled).
+- **Načíst stream** — Wireshark-like „Follow stream“ (lidsky čitelný text).
+- **Načíst flow** — chronologie `command ↔ response` se severitou, timeouty, reconnecty.
+- **Deep analysis** — segmenty, anomálie, mining pravidel.
+
+CLI alternativa (bez webu):
+
+```bash
+usb-analyze stream /cesta/k/capture.pcap --limit 30
+```
+
+Pokud uvidíte řádky `host ...` a `device ...`, parser data čte správně.
+
+## CLI
+
+```bash
+# Souhrn: počty, časové rozpětí, zařízení (bus/device), rozpad typů přenosů
+usb-analyze info CAPTURE.pcap
+
+# Tabulka paketů s filtry (bus, device, endpoint), stránkováním (--skip, --limit)
+usb-analyze dump CAPTURE.pcap --limit 50 --bus 1 --device 5
+
+# Export řádků (jsonl nebo csv), pro velké soubory použijte --limit
+usb-analyze export CAPTURE.pcap --format jsonl --limit 1000 --output out.jsonl
+
+# Wireshark-style „Follow stream“ — textová komunikace
+usb-analyze stream CAPTURE.pcap --limit 200
+
+# Chronologický flow se severitou, kauzálními hinty, exporty
+usb-analyze flow CAPTURE.pcap \
+    --min-severity warning \
+    --hide-probes \
+    --format text          # text | json | csv
+usb-analyze flow CAPTURE.pcap --export-html report.html
+usb-analyze flow CAPTURE.pcap --export-junit junit.xml
+
+# Hluboká analýza (segmenty, anomálie, baseline, rules) — soubor i adresář
+usb-analyze deep-analyze CAPTURE_DIR/
+usb-analyze deep-analyze CAPTURE.pcap --baseline ~/.usb_analysis/dev.json --update-baseline
+```
+
+`flow` i `deep-analyze` přijímají adresář a načtou všechny soubory `*.pcap`, `*.pcapNN`
+(libovolné číslování) seřazené dle jména.
+
+## Webové UI a REST API
+
+```bash
+uvicorn usb_analysis.web.app:app --reload
+```
+
+Užitečné endpointy:
+
+| Endpoint | Popis |
+|----------|-------|
+| `POST /api/upload` | Upload jednoho PCAPu, vrací `capture_id` |
+| `POST /api/upload-multi` | Upload více souborů najednou |
+| `GET /api/summary?capture_id=...` | Souhrn |
+| `GET /api/packets?capture_id=...&offset=&limit=` | Stránkovaná tabulka paketů |
+| `GET /api/stream?capture_id=...` | Textový stream (Follow Stream) |
+| `GET /api/flow?capture_id=...&gap_threshold_s=2` | Časová osa s mezerami |
+| `GET /api/flow/stream?capture_id=...&min_severity=warning` | Filtrovaný flow |
+| `GET /api/flow/errors?capture_id=...` | Detekované chyby |
+| `GET /api/flow/runs` / `/api/flow/run/{n}` | Run summary a detail |
+| `GET /api/flow/timeline?buckets=120` | Hustotní bucket-graf |
+| `GET /api/flow/search?q=...` | Fulltext nad event content |
+| `GET /api/deep/findings` / `/api/deep/rules` | Anomálie a mined rules |
+| `GET /api/export/{json,csv,html,junit}` | Export aktuálního flow |
+| `GET/POST /api/baseline/{device}` | Načtení / update baseline |
+
+Endpointy přijímají `capture_id`, `capture_ids` (čárkou oddělené pro multi-source)
+nebo absolutní `path` (lokální použití).
+
+### Konfigurace přes env vars
+
+| Proměnná | Default | Popis |
+|----------|---------|-------|
+| `USB_ANALYSIS_MAX_UPLOAD_BYTES` | `536870912` (512 MB) | Limit velikosti uploadu |
+| `USB_ANALYSIS_FLOW_CACHE_MAX` | `16` | Max počet cachovaných flow analýz (LRU) |
+| `USB_ANALYSIS_LARGE_SAMPLE` | — | Cesta k lokálnímu velkému PCAPu pro test |
+
+## Knihovna
+
+```python
+from pathlib import Path
+from usb_analysis import iter_mmap_packets
+from usb_analysis.analysis.config import AnalysisConfig
+from usb_analysis.analysis.flow_builder import build_flow_stream
+from usb_analysis.analysis.causal import enrich_causal
+from usb_analysis.analysis.detectors import detect_errors
+from usb_analysis.analysis.parser import iter_usb_packets
+
+# Nízkoúrovňový parser (jeden soubor)
+for pkt in iter_mmap_packets(Path("capture.pcap")):
+    print(pkt.pcap_ts_sec, pkt.header.bus_id, pkt.header.device_address, len(pkt.payload))
+
+# Vysokoúrovňový flow analyzer (soubor i adresář)
+cfg = AnalysisConfig()
+packets = list(iter_usb_packets("captures/"))
+stream = build_flow_stream(packets, cfg)
+enrich_causal(stream, cfg)
+errors = detect_errors(stream, cfg)
+critical = [e for e in errors if e.severity == "critical"]
+```
+
+## Architektura
+
+```
+src/usb_analysis/
+├── pcap.py                 # PCAP file iterator (LE microsecond format)
+├── usb_mmap.py             # decode pcap_usb_header_mmapped (64 B)
+├── pipeline.py             # ParsedPacket iterator
+├── models.py               # UsbMappedHeader, ParsedPacket, konstanty
+├── filters.py              # bus/device/endpoint filtr
+├── serialization.py        # packet_record → JSONL/CSV řádek
+├── stream_text.py          # ASCII Follow Stream
+├── flow_timeline.py        # chronologická osa s gap markery
+├── trezor.py               # HID framing + protobuf decoder
+├── summary.py              # one-pass agregát
+├── cli.py                  # `usb-analyze` (Typer)
+├── web/app.py              # FastAPI server + statické UI
+└── analysis/
+    ├── config.py           # AnalysisConfig (timeouty, prahy, slovníky)
+    ├── parser.py           # UsbPacket + collect_pcap_files()
+    ├── segmenter.py        # Segment (cmd → response)
+    ├── flow_builder.py     # FlowStream + FlowEvent
+    ├── causal.py           # kauzální okno + hinty
+    ├── detectors.py        # ErrorEvent (timeout, eproto, crc, timing, …)
+    ├── crc_util.py         # CRC32 protokol checksum
+    ├── baseline.py         # CommandProfile + DeviceBaseline
+    ├── store.py            # save/load + merge_baseline
+    ├── scorer.py           # AnomalyFinding skóre proti baseline
+    ├── features.py         # rys segmentu pro mining
+    ├── rules.py            # association mining
+    ├── aggregator.py       # multi-tester report + drift
+    ├── exporter.py         # JSON/CSV/HTML/JUnit export
+    └── engine.py           # orchestrace deep-analyze
+```
+
+## Testy
+
+```bash
+PYTHONPATH=src python3 -m pytest tests/ -v
+```
+
+Smoke test (`tests/smoke_test.py`) generuje syntetické PCAPy v paměti a pokrývá
+konec-do-konce scénáře (CRC probe, timeout → error, EPROTO isolated/reconnect,
+incomplete segment, lost URB, timing spike, multi-tester aggregation). Testy
+neimplementovaných detektorů (`unexpected_disconnect`, `malformed_command`,
+`serial_mismatch`, `heartbeat_anomaly`, `run_incomplete`, lock-regression
+context tracking) jsou explicitně označeny `@unittest.skip`.
+
+## Související nástroje
+
+- [usbrply](https://github.com/JohnDMcMaster/usbrply) — převod PCAP na replay
+  skript (libusb); užitečné pro rekonstrukci povelů nad konkrétním zařízením.
+
+## Licence
+
+MIT (nebo podle výběru autora projektu).

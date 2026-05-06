@@ -1,0 +1,2 @@
+[console_scripts]
+usb-analyze = usb_analysis.cli:app

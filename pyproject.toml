@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usb-analysis"
+version = "0.1.0"
+description = "Stream reader and analyzer for Linux USB mmap PCAP (usbmon) captures."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "typer>=0.12",
+  "rich>=13.0",
+  "fastapi>=0.115.0",
+  "python-multipart>=0.0.9",
+  "uvicorn[standard]>=0.32.0",
+  "trezor>=0.20.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+usb-analyze = "usb_analysis.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+usb_analysis = ["web/static/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

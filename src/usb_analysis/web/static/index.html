@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>USB Analysis</title>
+  <link rel="stylesheet" href="/static/style.css"/>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <span class="brand-mark">USB</span>
+      <span class="brand-title">Analysis</span>
+    </div>
+    <div class="capture-status" id="captureStatus">
+      <span class="status-dot status-empty"></span>
+      <span class="status-text">Žádný capture nenahrán</span>
+    </div>
+    <div class="severity-summary" id="severitySummary" hidden>
+      <span class="badge badge-critical" id="badgeCritical" title="Critical events">0</span>
+      <span class="badge badge-warning" id="badgeWarning" title="Warning events">0</span>
+      <span class="badge badge-info" id="badgeInfo" title="Info events">0</span>
+    </div>
+  </header>
+
+  <div class="app-layout">
+    <aside class="sidebar">
+      <section class="sidebar-section">
+        <h2>Zdroj</h2>
+        <div class="upload-zone" id="uploadZone">
+          <input type="file" id="upload" multiple
+                 accept=".pcap,.pcapng,.cap,.pcap00,.pcap01,.pcap02,.pcap03,.pcap04,.pcap05,.pcap06,.pcap07,.pcap08,.pcap09"
+                 hidden/>
+          <label for="upload" class="upload-button">
+            <span class="upload-icon">⬆</span>
+            <span>Nahrát PCAP soubory</span>
+            <span class="upload-hint">nebo přetáhni sem</span>
+          </label>
+        </div>
+        <details class="path-input">
+          <summary>Lokální cesta na serveru</summary>
+          <div class="form-row">
+            <input type="text" id="pathBox" placeholder="/cesta/trace.pcap00"/>
+            <button type="button" id="btnLoadPath" class="btn-secondary">Načíst</button>
+          </div>
+        </details>
+      </section>
+
+      <section class="sidebar-section">
+        <h2>Filtry <button type="button" class="hint-icon" title="Filtry se aplikují na pakety i flow">?</button></h2>
+        <div class="filter-grid">
+          <label class="filter-field">
+            <span class="field-label">bus</span>
+            <input type="number" id="fBus" placeholder="—"/>
+          </label>
+          <label class="filter-field">
+            <span class="field-label">device</span>
+            <input type="number" id="fDev" placeholder="—"/>
+          </label>
+          <label class="filter-field">
+            <span class="field-label">endpoint</span>
+            <input type="number" id="fEp" placeholder="—"/>
+          </label>
+        </div>
+        <button type="button" id="btnApplyFilters" class="btn-primary btn-block">Aplikovat filtry</button>
+        <button type="button" id="btnClearFilters" class="btn-ghost btn-block">Vymazat filtry</button>
+      </section>
+
+      <section class="sidebar-section" id="sessionsSection" hidden>
+        <h2>Device sessions</h2>
+        <div id="sessionsList" class="sessions-list"></div>
+      </section>
+
+      <section class="sidebar-section">
+        <h2>Klávesové zkratky</h2>
+        <ul class="shortcut-list">
+          <li><kbd>↑</kbd>/<kbd>↓</kbd> pohyb ve flow</li>
+          <li><kbd>PgUp</kbd>/<kbd>PgDn</kbd> rychlý skok</li>
+          <li><kbd>P</kbd> skok na párovanou událost</li>
+          <li><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> historie</li>
+          <li><kbd>1</kbd>–<kbd>9</kbd> přepnutí záložky</li>
+        </ul>
+      </section>
+    </aside>
+
+    <main class="main">
+      <nav class="tabs" role="tablist">
+        <button type="button" class="tab" data-tab="overview" role="tab">
+          <span class="tab-icon">⌂</span> Přehled
+        </button>
+        <button type="button" class="tab" data-tab="packets" role="tab">
+          <span class="tab-icon">▦</span> Pakety
+        </button>
+        <button type="button" class="tab" data-tab="stream" role="tab">
+          <span class="tab-icon">≡</span> Stream <small>(ASCII)</small>
+        </button>
+        <button type="button" class="tab tab-primary" data-tab="flow" role="tab">
+          <span class="tab-icon">⇋</span> Flow analyzer
+        </button>
+        <button type="button" class="tab" data-tab="errors" role="tab">
+          <span class="tab-icon">!</span> Errors
+        </button>
+        <button type="button" class="tab" data-tab="sessions" role="tab">
+          <span class="tab-icon">◐</span> Sessions
+        </button>
+        <button type="button" class="tab" data-tab="deep" role="tab">
+          <span class="tab-icon">∿</span> Deep analysis
+        </button>
+        <button type="button" class="tab" data-tab="export" role="tab">
+          <span class="tab-icon">⤓</span> Export
+        </button>
+        <button type="button" class="tab tab-help" data-tab="help" role="tab">
+          <span class="tab-icon">?</span> Nápověda
+        </button>
+      </nav>
+
+      <div class="tab-content">
+        <!-- ============ Overview ============ -->
+        <section class="tab-panel" data-panel="overview" role="tabpanel">
+          <div class="empty-state" id="overviewEmpty">
+            <h2>Začněte nahráním PCAP souboru</h2>
+            <p>Použijte nahrávací tlačítko vlevo nebo přetáhněte soubor sem.</p>
+          </div>
+          <div id="overviewContent" hidden>
+            <div class="metrics-grid">
+              <div class="metric">
+                <div class="metric-label">Pakety</div>
+                <div class="metric-value" id="mPackets">—</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Doba trvání</div>
+                <div class="metric-value" id="mDuration">—</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Sessions</div>
+                <div class="metric-value" id="mSessions">—</div>
+              </div>
+              <div class="metric">
+                <div class="metric-label">Runs</div>
+                <div class="metric-value" id="mRuns">—</div>
+              </div>
+              <div class="metric metric-critical">
+                <div class="metric-label">Critical</div>
+                <div class="metric-value" id="mCritical">—</div>
+              </div>
+              <div class="metric metric-warning">
+                <div class="metric-label">Warning</div>
+                <div class="metric-value" id="mWarning">—</div>
+              </div>
+            </div>
+
+            <div class="card">
+              <h3>Časové okno</h3>
+              <div class="time-info" id="timeInfo"></div>
+            </div>
+
+            <div class="card">
+              <h3>Zařízení</h3>
+              <div id="overviewDevices" class="devices-list"></div>
+            </div>
+
+            <div class="card">
+              <h3>Rozdělení přenosů a událostí</h3>
+              <div class="dist-grid">
+                <div>
+                  <h4>Transfer types</h4>
+                  <div id="overviewXfer" class="dist-bars"></div>
+                </div>
+                <div>
+                  <h4>Event types</h4>
+                  <div id="overviewEvents" class="dist-bars"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Packets ============ -->
+        <section class="tab-panel" data-panel="packets" role="tabpanel">
+          <div class="panel-toolbar">
+            <div class="form-row">
+              <label class="inline-field">
+                offset <input type="number" id="fOff" value="0"/>
+              </label>
+              <label class="inline-field">
+                limit <input type="number" id="fLim" value="50"/>
+              </label>
+              <button type="button" id="btnRefresh" class="btn-primary">Načíst</button>
+              <button type="button" id="btnPrev" class="btn-ghost">← stránka</button>
+              <button type="button" id="btnNext" class="btn-ghost">stránka →</button>
+            </div>
+          </div>
+          <div class="panel-split">
+            <div class="table-wrapper">
+              <table class="packet-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>pcap ts</th>
+                    <th>urb</th>
+                    <th>ev</th>
+                    <th>xfer</th>
+                    <th>bus</th>
+                    <th>dev</th>
+                    <th>ep</th>
+                    <th>payload</th>
+                    <th>trezor</th>
+                  </tr>
+                </thead>
+                <tbody id="rowsBody"></tbody>
+              </table>
+            </div>
+            <aside class="detail-aside">
+              <h3>Detail paketu</h3>
+              <pre id="detailOut" class="detail-pre">Vyber řádek…</pre>
+            </aside>
+          </div>
+        </section>
+
+        <!-- ============ Stream ============ -->
+        <section class="tab-panel" data-panel="stream" role="tabpanel">
+          <div class="panel-toolbar">
+            <button type="button" id="btnStream" class="btn-primary">Načíst stream</button>
+            <span class="muted">Wireshark-like „Follow stream“ — ASCII překlad bulk komunikace</span>
+          </div>
+          <pre id="streamOut" class="stream-pre">Klikni na „Načíst stream“…</pre>
+        </section>
+
+        <!-- ============ Flow analyzer ============ -->
+        <section class="tab-panel" data-panel="flow" role="tabpanel">
+          <div class="panel-toolbar flow-toolbar">
+            <label class="inline-field">
+              Severity
+              <select id="flowSeverity">
+                <option value="info">info+</option>
+                <option value="warning" selected>warning+</option>
+                <option value="critical">critical</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              Direction
+              <select id="flowDirection">
+                <option value="">vše</option>
+                <option value="HOST→DEV">HOST→DEV</option>
+                <option value="DEV→HOST">DEV→HOST</option>
+                <option value="INTERNAL">INTERNAL</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              Run
+              <input type="number" id="flowRun" placeholder="vše"/>
+            </label>
+            <label class="inline-field flow-search">
+              Search
+              <input type="text" id="flowSearch" placeholder="ERROR, DN/DP…"/>
+            </label>
+            <div class="toolbar-spacer"></div>
+            <button type="button" id="flowBack" class="btn-ghost" title="Zpět (Alt+←)">←</button>
+            <button type="button" id="flowForward" class="btn-ghost" title="Vpřed (Alt+→)">→</button>
+            <button type="button" id="btnFlow" class="btn-primary">Načíst</button>
+          </div>
+          <div class="legend-row">
+            <span class="legend-item legend-out">HOST→DEV</span>
+            <span class="legend-item legend-in">DEV→HOST</span>
+            <span class="legend-item legend-internal">INTERNAL</span>
+            <span class="legend-item legend-warning">warning</span>
+            <span class="legend-item legend-critical">critical</span>
+          </div>
+          <div class="flow-layout">
+            <div class="flow-pane">
+              <div id="flowStats" class="muted"></div>
+              <div id="flowVirtualViewport" class="flow-virtual-viewport" aria-live="polite">
+                <div id="flowVirtualInner"></div>
+              </div>
+            </div>
+            <aside class="flow-detail-pane">
+              <h3>Detail události</h3>
+              <pre id="flowDetailOut" class="detail-pre"></pre>
+              <h3>Kauzální kontext</h3>
+              <div id="flowCausalList" class="flow-causal-list"></div>
+            </aside>
+          </div>
+          <div class="timeline-wrap">
+            <canvas id="flowTimeline" height="90"></canvas>
+            <div class="muted">Klikni do timelinu pro skok na úsek.</div>
+          </div>
+        </section>
+
+        <!-- ============ Errors ============ -->
+        <section class="tab-panel" data-panel="errors" role="tabpanel">
+          <div class="panel-toolbar">
+            <label class="inline-field">
+              Min severity
+              <select id="errSeverity">
+                <option value="info">info+</option>
+                <option value="warning" selected>warning+</option>
+                <option value="critical">critical</option>
+              </select>
+            </label>
+            <label class="inline-field">
+              Layer
+              <select id="errLayer">
+                <option value="">vše</option>
+                <option value="transport">transport</option>
+                <option value="connection">connection</option>
+                <option value="protocol">protocol</option>
+                <option value="application">application</option>
+                <option value="timing">timing</option>
+              </select>
+            </label>
+            <button type="button" id="btnLoadErrors" class="btn-primary">Načíst chyby</button>
+          </div>
+          <div class="table-wrapper">
+            <table class="errors-table">
+              <thead>
+                <tr>
+                  <th>seq</th>
+                  <th>layer</th>
+                  <th>severity</th>
+                  <th>type</th>
+                  <th>description</th>
+                  <th>ts</th>
+                  <th>causal hints</th>
+                </tr>
+              </thead>
+              <tbody id="errorsBody"></tbody>
+            </table>
+          </div>
+          <p class="muted" id="errorsEmpty">Klikni na „Načíst chyby“ po nahrání capture.</p>
+        </section>
+
+        <!-- ============ Sessions / Runs ============ -->
+        <section class="tab-panel" data-panel="sessions" role="tabpanel">
+          <div class="panel-toolbar">
+            <button type="button" id="btnLoadSessions" class="btn-primary">Načíst sessions a runy</button>
+          </div>
+          <div class="card">
+            <h3>Device sessions</h3>
+            <div class="table-wrapper">
+              <table class="sessions-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>bus</th>
+                    <th>dev</th>
+                    <th>serial</th>
+                    <th>start seq</th>
+                    <th>end seq</th>
+                    <th>events</th>
+                    <th>start ts</th>
+                    <th>doba</th>
+                  </tr>
+                </thead>
+                <tbody id="sessionsTableBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Runs</h3>
+            <div class="table-wrapper">
+              <table class="runs-table">
+                <thead>
+                  <tr>
+                    <th>run</th>
+                    <th>start seq</th>
+                    <th>end seq</th>
+                    <th>cmds</th>
+                    <th>errors</th>
+                    <th>doba</th>
+                    <th>completeness</th>
+                  </tr>
+                </thead>
+                <tbody id="runsBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Deep analysis ============ -->
+        <section class="tab-panel" data-panel="deep" role="tabpanel">
+          <div class="panel-toolbar">
+            <button type="button" id="btnDeep" class="btn-primary">Spustit hloubkovou analýzu</button>
+            <span class="muted">Segmentace, baseline scoring, mining pravidel</span>
+          </div>
+          <div class="card">
+            <h3>Souhrn</h3>
+            <pre id="deepSummaryOut" class="detail-pre">—</pre>
+          </div>
+          <div class="card">
+            <h3>Top anomálie</h3>
+            <div class="table-wrapper">
+              <table class="findings-table">
+                <thead>
+                  <tr>
+                    <th>score</th>
+                    <th>cmd</th>
+                    <th>outcome</th>
+                    <th>run</th>
+                    <th>latency</th>
+                    <th>reasons</th>
+                  </tr>
+                </thead>
+                <tbody id="deepFindingsBody"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Návrhy pravidel</h3>
+            <div class="table-wrapper">
+              <table class="rules-table">
+                <thead>
+                  <tr>
+                    <th>rule</th>
+                    <th>conf</th>
+                    <th>support</th>
+                    <th>popis</th>
+                    <th>akce</th>
+                  </tr>
+                </thead>
+                <tbody id="deepRulesBody"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <!-- ============ Help ============ -->
+        <section class="tab-panel" data-panel="help" role="tabpanel">
+          <div class="help-content">
+
+            <div class="help-toc card">
+              <h3>Obsah nápovědy</h3>
+              <ul>
+                <li><a href="#help-start">1. Rychlý start</a></li>
+                <li><a href="#help-tabs">2. Co která záložka dělá</a></li>
+                <li><a href="#help-flow">3. Jak číst Flow analyzer</a></li>
+                <li><a href="#help-glossary">4. Slovník event tříd</a></li>
+                <li><a href="#help-severity">5. Severity (závažnost)</a></li>
+                <li><a href="#help-scenarios">6. Časté scénáře</a></li>
+                <li><a href="#help-keys">7. Klávesové zkratky</a></li>
+              </ul>
+            </div>
+
+            <!-- 1 ────────────────────────────────────────── -->
+            <div class="card" id="help-start">
+              <h3>1. Rychlý start</h3>
+              <ol class="help-steps">
+                <li><strong>Nahraj PCAP.</strong> Použij <em>Upload</em> v sidebaru vlevo nebo přetáhni soubory přímo na nahrávací pole. Aplikace přijímá <code>.pcap</code>, <code>.pcap00</code> až <code>.pcapNN</code> ve formátu <code>LINKTYPE_USB_LINUX_MMAPPED</code> (záznam z linuxového <code>usbmon</code>).</li>
+                <li><strong>Po nahrání</strong> se rozsvítí zelená tečka v hlavičce a zobrazí se záložka <em>Přehled</em> se souhrnem (počet paketů, doba trvání, sessions, runy, kritické chyby).</li>
+                <li><strong>Pro detailní pohled</strong> přepni na záložku <em>Flow analyzer</em> — to je hlavní zobrazení, kde uvidíš chronologii příkazů a odpovědí.</li>
+                <li><strong>Pokud něco selhalo</strong>, otevři záložku <em>Errors</em> — vidíš seznam detekovaných chyb. Klik na řádek tě skočne přímo do Flow na příslušné místo.</li>
+                <li><strong>Pro CI integraci</strong> stáhni JUnit XML ze záložky <em>Export</em>.</li>
+              </ol>
+            </div>
+
+            <!-- 2 ────────────────────────────────────────── -->
+            <div class="card" id="help-tabs">
+              <h3>2. Co která záložka dělá</h3>
+              <table class="help-table">
+                <thead><tr><th>Záložka</th><th>K čemu</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Přehled</strong></td><td>Souhrn capture: počet paketů, doba, runy, sessions, kritické/varovné counts. První zastávka po nahrání.</td></tr>
+                  <tr><td><strong>Pakety</strong></td><td>Surová tabulka USB paketů (technický pohled). Každý řádek = jeden URB Submit/Complete s metadaty (bus, device, endpoint, payload hex).</td></tr>
+                  <tr><td><strong>Stream</strong></td><td>„Follow Stream" jako ve Wiresharku — ASCII překlad bulk komunikace. Vidíš text který tester poslal a co zařízení odpovědělo.</td></tr>
+                  <tr><td><strong>Flow analyzer</strong></td><td>Hlavní view: chronologie command ↔ response s detekcí timeoutů, CRC chyb, reconnectů, kauzálních souvislostí. Klik na řádek ukáže detail vpravo.</td></tr>
+                  <tr><td><strong>Errors</strong></td><td>Filtrovaný seznam jen problémů (timeouts, CRC mismatch, EPROTO atd.). Klik = skok do Flow.</td></tr>
+                  <tr><td><strong>Sessions</strong></td><td>Per-zařízení (bus/dev/serial) a per-run statistiky. Užitečné když capture obsahuje výměnu zařízení nebo víc runů testu.</td></tr>
+                  <tr><td><strong>Deep analysis</strong></td><td>Strojové učení: porovnání proti naučenému baseline, mining pravidel napříč soubory. Dlouhá operace.</td></tr>
+                  <tr><td><strong>Export</strong></td><td>Stažení flow analýzy v JSON / CSV / HTML / JUnit XML.</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 3 ────────────────────────────────────────── -->
+            <div class="card" id="help-flow">
+              <h3>3. Jak číst Flow analyzer</h3>
+              <p>Každý řádek je jedna událost. Sloupce zleva:</p>
+              <table class="help-table">
+                <thead><tr><th>Sloupec</th><th>Význam</th></tr></thead>
+                <tbody>
+                  <tr><td><code>seq</code></td><td>Pořadové číslo události v capture. Klíč pro odkazy a párování.</td></tr>
+                  <tr><td><code>delta_ms</code></td><td>Doba od předchozí události v milisekundách. Velký skok = potenciální zaseknutí.</td></tr>
+                  <tr><td><code>direction</code></td><td><span class="legend-item legend-out">HOST→DEV</span> tester poslal data; <span class="legend-item legend-in">DEV→HOST</span> zařízení odpovědělo; <span class="legend-item legend-internal">INTERNAL</span> meta událost (timeout, reconnect…).</td></tr>
+                  <tr><td><code>dev-tag</code></td><td>Šedý badge <code>b1/d4|D736D92D</code> = bus/device/serial. Pomáhá rozlišit, který USB zařízení událost vyprodukovalo.</td></tr>
+                  <tr><td><code>[event_class]</code></td><td>Typ události — viz <a href="#help-glossary">glosář níže</a>.</td></tr>
+                  <tr><td><code>content</code></td><td>Lidsky čitelný popis: pro <code>command</code> obsahuje text příkazu, pro chyby vysvětlení důvodu.</td></tr>
+                </tbody>
+              </table>
+              <p class="help-callout">
+                <strong>Indikátory na řádcích:</strong>
+                <span class="legend-item legend-warning">žlutý okraj</span> = warning,
+                <span class="legend-item legend-critical">červený okraj</span> = critical,
+                <span style="color: var(--accent);">⛓</span> = chunkovaný příkaz (rozdělený na víc paketů),
+                <span style="color: var(--sev-warning);">žlutý levý proužek</span> = causal suspect (tato událost je v kauzálním okně jiné chyby).
+              </p>
+            </div>
+
+            <!-- 4 ────────────────────────────────────────── -->
+            <div class="card" id="help-glossary">
+              <h3>4. Slovník event tříd</h3>
+              <p>Každý řádek ve Flow má tag jako <code>[command]</code>, <code>[timeout]</code>, <code>[incomplete_segment]</code>. Tady je co znamenají:</p>
+
+              <h4>Komunikační události</h4>
+              <table class="help-table">
+                <thead><tr><th>Třída</th><th>Co znamená</th></tr></thead>
+                <tbody>
+                  <tr><td><code>command</code></td><td>Tester poslal příkaz na zařízení (např. <code>ping</code>, <code>checked-optiga-init</code>). Obsah řádku je celý odeslaný text včetně CRC suffixu.</td></tr>
+                  <tr><td><code>command_chunk</code></td><td>Pokračovací paket dlouhého příkazu (např. <code>checked-secrets-certdev-write</code> s velkým certifikátem se nevejde do jednoho USB paketu, posílá se po kouscích). <strong>Není to chyba</strong> — jen vizualizuje fyzické rozdělení.</td></tr>
+                  <tr><td><code>crc_probe</code></td><td>Tester zkouší jestli má zařízení zapnutý CRC režim. Záměrně pošle příkaz <em>bez</em> CRC. Pokud zařízení odpoví <code>ERROR invalid-crc</code>, znamená to že CRC <strong>je</strong> aktivní (= probe byl úspěšný).</td></tr>
+                  <tr><td><code>response_ok</code></td><td>Zařízení odpovědělo <code>OK</code> nebo <code>OK NO</code>. <code>OK NO</code> = operace proběhla, ale výsledek je negativní (např. lock-check říká „nezamčeno").</td></tr>
+                  <tr><td><code>response_error</code></td><td>Zařízení odpovědělo <code>ERROR</code>. Vždy critical (kromě crc_probe odpovědí, které jsou očekávané).</td></tr>
+                  <tr><td><code>response_progress</code></td><td>Průběžný status řádek (začíná <code>#</code>) — informativní, ne výsledek operace.</td></tr>
+                  <tr><td><code>response_data</code></td><td>Ostatní data od zařízení, která nezačínají <code>OK</code> ani <code>ERROR</code> ani <code>#</code>.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Detekované problémy</h4>
+              <table class="help-table">
+                <thead><tr><th>Třída</th><th>Co znamená</th></tr></thead>
+                <tbody>
+                  <tr><td><code>timeout</code></td><td><strong>Tester poslal příkaz a do 30 s nedostal odpověď.</strong> Zařízení se buď zaseklo, nebo odpověď nedorazila po sběrnici. Obsah řádku ukazuje skutečnou prodlevu (např. <code>Timeout 35000.0ms na checked-optiga-init</code>).</td></tr>
+                  <tr><td><code>incomplete_segment</code></td><td><strong>Předchozí příkaz nebyl uzavřený a přišel nový.</strong> Příklad: tester poslal příkaz A, ale ještě než A dostal odpověď, poslal příkaz B (nebo nastal reconnect). Stav komunikace je nekonzistentní — zařízení může nebo nemusí příkaz A zpracovat. <em>Pozn.: pokud je předchozí příkaz <code>chunked</code>, jde o normální pokračování — dnes se to <strong>neoznačí</strong> jako incomplete_segment.</em></td></tr>
+                  <tr><td><code>reconnect</code></td><td>Mezi dvěma bulk přenosy byla mezera &gt;5 s — pravděpodobně se zařízení odpojilo a znovu připojilo, nebo se restartovalo. Často následuje sekvence control transfers (re-enumerace).</td></tr>
+                  <tr><td><code>usb_error</code></td><td>USB chyba na fyzické vrstvě (např. status <code>-71</code> = EPROTO = chyba protokolu, signal integrity, DN/DP). Pokud následuje <code>reconnect</code>, je to typicky reset zařízení (info severity); izolovaná EPROTO bez reconnect = critical.</td></tr>
+                  <tr><td><code>lost_urb</code></td><td>USB Request Block byl odeslán (Submit), ale ani po 60 s nedorazil Complete. Zpráva se „ztratila" v ovladači nebo zařízení.</td></tr>
+                  <tr><td><code>device_change</code></td><td>V capture se objevil paket s jinou kombinací <code>(bus, device_address)</code> — typicky výměna zařízení nebo reassignment po reconnect. Zde končí jedna device session a začíná další.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Tagy v <em>Errors</em> tabulce (po detektoru)</h4>
+              <table class="help-table">
+                <thead><tr><th>event_type</th><th>Co znamená</th></tr></thead>
+                <tbody>
+                  <tr><td><code>missing_crc</code></td><td>Příkaz <code>checked-*</code> byl poslán bez CRC suffixu (8 hex znaků na konci). Zařízení v CRC režimu ho odmítne.</td></tr>
+                  <tr><td><code>crc_mismatch</code></td><td>CRC suffix nesouhlasí s vypočítaným CRC32 obsahu příkazu. Buď chyba testeru, nebo poškození na sběrnici.</td></tr>
+                  <tr><td><code>app_error</code></td><td>Aplikační vrstva: zařízení vrátilo <code>ERROR ...</code>.</td></tr>
+                  <tr><td><code>lock_regression</code></td><td>Po úspěšném <code>checked-*-lock</code> následný <code>lock-check</code> vrátil <code>OK NO</code> (= „nezamčeno"). Něco se odemklo, což být nemělo.</td></tr>
+                  <tr><td><code>timing_high</code> / <code>timing_critical</code></td><td>Latence příkazu &gt;5× / &gt;15× vyšší než medián jeho ostatních volání. Zařízení něco zpomaluje.</td></tr>
+                  <tr><td><code>timing_suspiciously_low</code></td><td>Latence &lt;50% nejmenšího pozorovaného minima. Možná zkratka v logice nebo cached odpověď.</td></tr>
+                  <tr><td><code>usb_eproto_isolated</code></td><td>EPROTO chyba bez následujícího reconnect — pravděpodobně permanentní hardware problém.</td></tr>
+                  <tr><td><code>usb_eproto_reconnect</code></td><td>EPROTO chyba následovaná reconnect — typicky reset zařízení po watchdog timeout.</td></tr>
+                  <tr><td><code>usb_lost_urb</code></td><td>Viz výše — Submit bez Complete v okně 60 s.</td></tr>
+                  <tr><td><code>device_reconnect</code></td><td>Reconnect zařízení (může být očekávaný nebo neočekávaný v závislosti na kontextu testu).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 5 ────────────────────────────────────────── -->
+            <div class="card" id="help-severity">
+              <h3>5. Severity (závažnost)</h3>
+              <table class="help-table">
+                <thead><tr><th>Úroveň</th><th>Co to znamená</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="badge badge-ok">ok</span></td><td>Normální stav (úspěšná odpověď, validní příkaz). Většinou skryté ve výchozím filtru <em>warning+</em>.</td></tr>
+                  <tr><td><span class="badge badge-info">info</span></td><td>Informativní (probe, progress, očekávaný reconnect). Není problém, ale stojí za zmínku.</td></tr>
+                  <tr><td><span class="badge badge-warning">warning</span></td><td>Něco není ideální (OK NO, vyšší latence, lost URB). Komunikace funguje, ale měl by ses na to podívat.</td></tr>
+                  <tr><td><span class="badge badge-critical">critical</span></td><td>Definitivní problém (timeout, ERROR, missing CRC, isolated EPROTO). Test pravděpodobně selhal.</td></tr>
+                  <tr><td><span class="badge badge-muted">suppressed</span></td><td>Ručně skryté manuálně přes API (pro odfiltrování známých falešných alarmů).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 6 ────────────────────────────────────────── -->
+            <div class="card" id="help-scenarios">
+              <h3>6. Časté scénáře — co znamenají v praxi</h3>
+
+              <div class="scenario">
+                <h4>Vidím jen <code>command_chunk</code> a žádný <code>command</code></h4>
+                <p>Pravděpodobně se posunula tabulka mimo začátek. Hledej parent <code>command</code> s ⛓ markerem výš (má stejné <code>cmd_name</code>). Continuation chunky jsou italic / dimmed.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Po <code>command</code> následuje <code>incomplete_segment</code> a žádný <code>response_ok</code></h4>
+                <p>Tester poslal příkaz, ale než dorazila odpověď, zaslal další příkaz nebo nastal reconnect. <strong>Předchozí příkaz nemá známou odpověď</strong> — buď ho zařízení nezpracovalo, nebo odpověď spadla. Podívej se kauzální kontext (panel vpravo) — typicky to bývá v důsledku <code>timeout</code> nebo <code>reconnect</code> těsně před tím.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Vidím <code>timeout</code>, pak <code>response_error</code> u dalšího příkazu</h4>
+                <p>Klasický „domino efekt": zařízení se zaseklo na předchozím příkazu, časem se vzpamatovalo, ale interní stav je rozbitý → další příkaz selhává. Detail vpravo by měl ukázat <strong>kauzální hint</strong> typu „Timeout na X před chybou mohl rozbít stav zařízení".</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Spousta <code>crc_probe</code> a <code>ERROR invalid-crc</code></h4>
+                <p>To je <strong>záměrné</strong>. Tester při startu zkouší jestli je CRC mód aktivní. <code>crc-enable</code> bez CRC suffixu → zařízení vrátí <code>ERROR invalid-crc</code> = ano, CRC běží. Severity je info, ne critical. Pokud chceš schovat, zaškrtni <em>hide probes</em>.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Mám 2 device sessions ve Sessions tabu</h4>
+                <p>Capture obsahuje výměnu zařízení nebo reassignment USB adresy (typicky po reconnect). Každá session má vlastní serial v <code>OK XXXXXXXX</code> odpovědích. <code>device_change</code> meta event ve Flow označuje hranici.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Latence příkazu skočila z 10 ms na 300 ms</h4>
+                <p>Detektor to označí jako <code>timing_critical</code>. Možné příčiny: zařízení provádí dlouhou operaci (kryptografii, flash write), nebo kontentaci na USB sběrnici. Zkontroluj <code>response_progress</code> řádky — pokud přichází <code>#</code> hlášení, zařízení něco dělá; pokud je ticho, je to anomálie.</p>
+              </div>
+            </div>
+
+            <!-- 7 ────────────────────────────────────────── -->
+            <div class="card" id="help-keys">
+              <h3>7. Klávesové zkratky</h3>
+              <table class="help-table">
+                <thead><tr><th>Klávesa</th><th>Akce</th></tr></thead>
+                <tbody>
+                  <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Přepnutí záložky podle pořadí</td></tr>
+                  <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Pohyb mezi řádky ve Flow analyzeru</td></tr>
+                  <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>Skok o 20 řádků</td></tr>
+                  <tr><td><kbd>P</kbd></td><td>Skok na párovanou událost (cmd ↔ response)</td></tr>
+                  <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Zpět / vpřed v historii navigace</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+        </section>
+
+        <!-- ============ Export ============ -->
+        <section class="tab-panel" data-panel="export" role="tabpanel">
+          <div class="card">
+            <h3>Stáhnout flow analýzu</h3>
+            <p class="muted">Stáhne se aktuálně nahraný capture (a všechny jeho sessions).</p>
+            <div class="export-grid">
+              <a href="#" id="exportJson" class="export-card" download>
+                <span class="export-icon">{ }</span>
+                <span class="export-name">JSON</span>
+                <span class="export-desc">Kompletní stream + stats + sessions</span>
+              </a>
+              <a href="#" id="exportCsv" class="export-card" download>
+                <span class="export-icon">▦</span>
+                <span class="export-name">CSV</span>
+                <span class="export-desc">Tabulka eventů pro spreadsheet</span>
+              </a>
+              <a href="#" id="exportHtml" class="export-card" download>
+                <span class="export-icon">&lt;/&gt;</span>
+                <span class="export-name">HTML report</span>
+                <span class="export-desc">Standalone náhled pro sdílení</span>
+              </a>
+              <a href="#" id="exportJunit" class="export-card" download>
+                <span class="export-icon">✓</span>
+                <span class="export-name">JUnit XML</span>
+                <span class="export-desc">CI integrace (Jenkins, GitLab…)</span>
+              </a>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+
+  <div id="loadingOverlay" class="loading-overlay" hidden role="dialog" aria-live="assertive" aria-busy="true">
+    <div class="loading-modal">
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="loading-text">
+        <div class="loading-title" id="loadingTitle">Načítám…</div>
+        <div class="loading-detail" id="loadingDetail"></div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
