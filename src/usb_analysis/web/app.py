@@ -526,6 +526,7 @@ def api_flow_errors(
 def api_flow_runs(path: str | None = Query(default=None), capture_id: str | None = Query(default=None), capture_ids: str | None = Query(default=None)):
     caps = resolve_captures(_nonempty_query(path), _nonempty_query(capture_id), _nonempty_query(capture_ids))
     stream = _get_flow_analysis(caps)["stream"]
+    dut_by_run = stream.dut_serial_by_run if hasattr(stream, "dut_serial_by_run") else {}
     runs: dict[int, dict] = {}
     for e in stream.events:
         r = runs.setdefault(
@@ -538,6 +539,7 @@ def api_flow_runs(path: str | None = Query(default=None), capture_id: str | None
                 "ts_end": e.ts,
                 "cmd_count": 0,
                 "error_count": 0,
+                "dut_serial": dut_by_run.get(e.run_index),
             },
         )
         r["end_seq"] = e.seq

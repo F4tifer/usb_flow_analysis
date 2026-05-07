@@ -53,6 +53,11 @@ class AnalysisConfig:
     crc_required_prefix: str = "checked-"
     known_no_crc_commands: frozenset[str] = frozenset({"ping", "crc-enable", "crc-disable"})
     crc_probe_commands: frozenset[str] = frozenset({"crc-enable", "crc-disable"})
+    # Commands whose first argument carries the *DUT* (device-under-test) serial
+    # number — independent from `OK <SN>` responses (which are the tester's
+    # internal serial). Tracking the DUT serial lets us identify each physical
+    # piece of hardware across runs in one capture.
+    device_sn_write_commands: frozenset[str] = frozenset({"checked-otp-device-sn-write"})
 
     # Timing
     timing_mad_multiplier: float = 5.0

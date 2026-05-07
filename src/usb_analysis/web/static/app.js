@@ -520,12 +520,19 @@ function renderSidebarSessions(sessions) {
     return;
   }
   wrap.hidden = false;
-  list.innerHTML = sessions.map((s) => `
-    <div class="session-pill" data-seq="${s.start_seq}">
-      <div><span class="session-id">#${s.session_index}</span> bus ${s.bus_id}/dev ${s.device_address}</div>
-      <div class="session-meta">SN: ${s.device_serial || "?"} · seq ${s.start_seq}–${s.end_seq}</div>
-    </div>
-  `).join("");
+  list.innerHTML = sessions.map((s) => {
+    const dutCount = (s.dut_serials || []).length;
+    const dutLabel = dutCount === 0 ? "—"
+      : dutCount === 1 ? escapeHtml(s.dut_serials[0])
+      : `${dutCount} DUTs`;
+    return `
+      <div class="session-pill" data-seq="${s.start_seq}">
+        <div><span class="session-id">#${s.session_index}</span> bus ${s.bus_id}/dev ${s.device_address}</div>
+        <div class="session-meta">DUT: ${dutLabel} · tester: ${escapeHtml(s.tester_serial || "?")}</div>
+        <div class="session-meta">seq ${s.start_seq}–${s.end_seq} · ${s.event_count} eventů</div>
+      </div>
+    `;
+  }).join("");
   $$(".session-pill", list).forEach((el) => {
     el.onclick = () => jumpToSeq(parseInt(el.dataset.seq, 10)).catch(toastError);
   });
@@ -645,11 +652,13 @@ async function loadSessions() {
   for (const s of sessions) {
     const tr = document.createElement("tr");
     const dur = fmtDuration(s.ts_end - s.ts_start);
+    const duts = (s.dut_serials && s.dut_serials.length) ? s.dut_serials.join(", ") : "—";
     tr.innerHTML = `
       <td>${s.session_index}</td>
       <td>${s.bus_id}</td>
       <td>${s.device_address}</td>
-      <td>${s.device_serial || "?"}</td>
+      <td>${escapeHtml(s.tester_serial || "—")}</td>
+      <td>${escapeHtml(duts)}</td>
       <td>${s.start_seq}</td>
       <td>${s.end_seq}</td>
       <td>${s.event_count}</td>
@@ -668,6 +677,7 @@ async function loadSessions() {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.run_index}</td>
+      <td>${escapeHtml(r.dut_serial || "—")}</td>
       <td>${r.start_seq}</td>
       <td>${r.end_seq}</td>
       <td>${r.cmd_count}</td>

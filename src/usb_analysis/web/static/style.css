@@ -498,9 +498,12 @@ kbd {
  * ========================================================== */
 .tab-content {
   flex: 1;
-  overflow: auto;
+  overflow: hidden;            /* each panel handles its own scroll */
   padding: 1rem 1.2rem;
   background: var(--bg-app);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .tab-panel {
@@ -510,6 +513,18 @@ kbd {
 
 .tab-panel.active {
   display: block;
+  flex: 1;                     /* fill remaining space inside .tab-content */
+  min-height: 0;
+  overflow: auto;              /* default: scroll long content (overview, deep, etc.) */
+}
+
+/* Flow panel uses internal flex layout so the events viewport can stretch to
+ * fill the available vertical space — fixed 480px previously left empty
+ * area between the list and the timeline on tall screens. */
+.tab-panel[data-panel="flow"].active {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 @keyframes fadeIn {
@@ -806,8 +821,15 @@ tbody tr.sev-warning:hover { background: rgba(245, 158, 11, 0.13); }
 .flow-layout {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
+  /* Single row that fills the entire vertical space: minmax(0, 1fr) lets the
+   * row both shrink to 0 (so children's overflow can clip) and grow to fill
+   * the parent. Without this, the row sized to content height — which made
+   * the left viewport look short next to a long detail panel. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 0.85rem;
   margin-bottom: 0.75rem;
+  flex: 1;
+  min-height: 320px;
 }
 
 @media (max-width: 1200px) {
@@ -823,18 +845,40 @@ tbody tr.sev-warning:hover { background: rgba(245, 158, 11, 0.13); }
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.flow-detail-pane {
+  overflow: auto;
 }
 
 .flow-detail-pane h3 {
   margin: 0 0 0.4rem;
   font-size: 0.82rem;
+  flex-shrink: 0;
 }
 
 .flow-detail-pane h3:not(:first-child) { margin-top: 0.65rem; }
 
+/* JSON detail grows to fill remaining space; the global .detail-pre
+ * `max-height: 70vh` cap is overridden so it can use whatever the pane
+ * gives it. The pane itself has overflow: auto so genuinely huge JSON
+ * still scrolls. */
+#flowDetailOut {
+  flex: 1;
+  min-height: 180px;
+  max-height: none;
+}
+
+#flowCausalList {
+  flex-shrink: 0;
+}
+
 .flow-virtual-viewport {
   position: relative;
-  height: 480px;
+  flex: 1;                    /* fill remaining height of .flow-pane */
+  min-height: 280px;
   overflow: auto;
   background: var(--bg-input);
   border: 1px solid var(--border-subtle);

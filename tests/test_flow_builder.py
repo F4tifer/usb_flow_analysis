@@ -95,6 +95,47 @@ def test_device_change_emits_session_boundary():
     assert {e.device_session for e in stream.events} == {0, 1}
 
 
+def test_dut_serial_is_extracted_from_write_command():
+    """`checked-otp-device-sn-write <SN>` must populate the DUT serial. The
+    `OK <tester_sn>` response must remain visible as the *tester* serial — it
+    is not the device-under-test's identity. Tester SN must be 8 hex chars
+    (real protocol format)."""
+    pkts = [
+        UsbPacket(1,'S','bulk',1,'OUT',1.0,0,10,b'ping\n',False,'a.pcap',bus_id=1,device_address=4),
+        UsbPacket(1,'C','bulk',1,'IN', 1.01,0,10,b'OK ABCDEF01\n',False,'a.pcap',bus_id=1,device_address=4),
+        UsbPacket(2,'S','bulk',1,'OUT',2.0,0,40,b'checked-otp-device-sn-write DUT-AAA-001 12345678\n',False,'a.pcap',bus_id=1,device_address=4),
+        UsbPacket(2,'C','bulk',1,'IN', 2.05,0,10,b'OK ABCDEF01\n',False,'a.pcap',bus_id=1,device_address=4),
+    ]
+    stream = build_flow_stream(pkts, AnalysisConfig())
+    assert stream.dut_serial_by_run.get(0) == 'DUT-AAA-001'
+    assert len(stream.device_sessions) == 1
+    sess = stream.device_sessions[0]
+    assert sess.tester_serial == 'ABCDEF01'
+    assert sess.dut_serials == ['DUT-AAA-001']
+    last_ok = [e for e in stream.events if e.event_class == 'response_ok'][-1]
+    assert last_ok.device_serial == 'DUT-AAA-001'
+
+
+def test_multiple_runs_each_have_own_dut():
+    """Two runs in one capture (two write-sn commands) → two DUT serials."""
+    pkts = []
+    pkts.append(UsbPacket(1,'S','bulk',1,'OUT',1.0, 0,30,b'checked-otp-device-sn-write DUT-A 11111111\n',False,'a.pcap',bus_id=1,device_address=4))
+    pkts.append(UsbPacket(1,'C','bulk',1,'IN', 1.01,0,10,b'OK ABCDEF01\n',False,'a.pcap',bus_id=1,device_address=4))
+    for i in range(7):
+        seq = 2 + i * 2
+        pkts.append(UsbPacket(seq,'S','bulk',1,'OUT', 2.0 + i * 0.1, 0, 4, b'ping\n', False, 'a.pcap', bus_id=1, device_address=4))
+        pkts.append(UsbPacket(seq,'C','bulk',1,'IN',  2.0 + i * 0.1 + 0.001, 0, 10, b'OK ABCDEF01\n', False, 'a.pcap', bus_id=1, device_address=4))
+    base_seq = 2 + 7 * 2
+    pkts.append(UsbPacket(base_seq,'S','bulk',1,'OUT', 5.0, 0, 30, b'checked-otp-device-sn-write DUT-B 22222222\n', False, 'a.pcap', bus_id=1, device_address=4))
+    pkts.append(UsbPacket(base_seq,'C','bulk',1,'IN',  5.01, 0, 10, b'OK ABCDEF01\n', False, 'a.pcap', bus_id=1, device_address=4))
+    stream = build_flow_stream(pkts, AnalysisConfig())
+    assert 'DUT-A' in stream.dut_serial_by_run.values()
+    assert 'DUT-B' in stream.dut_serial_by_run.values()
+    assert len(stream.device_sessions) == 1
+    assert stream.device_sessions[0].dut_serials == ['DUT-A', 'DUT-B']
+    assert stream.device_sessions[0].tester_serial == 'ABCDEF01'
+
+
 def test_chunked_command_does_not_emit_incomplete_segment():
     """Long ASCII command split across multiple bulk OUT submits — must be
     recognized as one chunked command, not as a series of `incomplete_segment`

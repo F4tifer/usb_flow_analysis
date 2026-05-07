@@ -343,7 +343,8 @@
             <button type="button" id="btnLoadSessions" class="btn-primary">Načíst sessions a runy</button>
           </div>
           <div class="card">
-            <h3>Device sessions</h3>
+            <h3>USB sessions <small class="muted">(per bus/device)</small></h3>
+            <p class="muted">Hranice = změna <code>(bus, device_address)</code>. Tester serial je z <code>OK …</code> odpovědí, DUT serials z <code>checked-otp-device-sn-write</code>.</p>
             <div class="table-wrapper">
               <table class="sessions-table">
                 <thead>
@@ -351,7 +352,8 @@
                     <th>#</th>
                     <th>bus</th>
                     <th>dev</th>
-                    <th>serial</th>
+                    <th>tester SN</th>
+                    <th>DUT SN(s)</th>
                     <th>start seq</th>
                     <th>end seq</th>
                     <th>events</th>
@@ -364,12 +366,14 @@
             </div>
           </div>
           <div class="card">
-            <h3>Runs</h3>
+            <h3>Test runs <small class="muted">(jednotlivé HW kusy)</small></h3>
+            <p class="muted">Každý run programuje jeden DUT. <strong>DUT SN</strong> = první argument příkazu <code>checked-otp-device-sn-write</code> v daném runu.</p>
             <div class="table-wrapper">
               <table class="runs-table">
                 <thead>
                   <tr>
                     <th>run</th>
+                    <th>DUT SN</th>
                     <th>start seq</th>
                     <th>end seq</th>
                     <th>cmds</th>
@@ -506,6 +510,16 @@
             <div class="card" id="help-glossary">
               <h3>4. Slovník event tříd</h3>
               <p>Každý řádek ve Flow má tag jako <code>[command]</code>, <code>[timeout]</code>, <code>[incomplete_segment]</code>. Tady je co znamenají:</p>
+
+              <h4>Tester SN vs. DUT SN — kdo je kdo</h4>
+              <table class="help-table">
+                <thead><tr><th>Pojem</th><th>Význam</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Tester SN</strong></td><td>Serial programovací stanice (testeru). Pochází z odpovědí <code>OK XXXXXXXX</code> (8 hex znaků). Je <strong>stejný</strong> pro všechny runy v jednom capture — jeden tester programuje mnoho DUTů.</td></tr>
+                  <tr><td><strong>DUT SN</strong></td><td>Serial konkrétního kusu hardware (Device-Under-Test). Pochází z příkazu <code>checked-otp-device-sn-write &lt;SN&gt;</code> — první argument za názvem příkazu. <strong>Mění se per run</strong> — každý run programuje jeden nový DUT.</td></tr>
+                  <tr><td><code>device_serial</code> v event JSON</td><td>Aktuální identita: DUT SN má přednost (jakmile je v runu zapsán), jinak tester SN. Toto je „kdo právě teď komunikuje" z pohledu uživatele.</td></tr>
+                </tbody>
+              </table>
 
               <h4>Komunikační události</h4>
               <table class="help-table">

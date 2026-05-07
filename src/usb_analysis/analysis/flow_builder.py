@@ -10,6 +10,11 @@ from usb_analysis.analysis.crc_util import extract_serial_from_response, validat
 from usb_analysis.analysis.parser import UsbPacket
 
 
+# Pre-compiled to keep session builder out of crc_util's regex re-compile path.
+import re as _re
+_OK_SERIAL_RE = _re.compile(r"^OK(?:\s+NO)?\s+([0-9A-Fa-f]{8})\s*$")
+
+
 @dataclass(slots=True)
 class FlowEvent:
     seq: int
@@ -88,6 +93,13 @@ class DeviceSession:
     ts_start: float
     ts_end: float
     event_count: int
+    # Tester-side serial (from `OK <SN>` responses) — typically the USB-port /
+    # programming station ID, identical across all runs of a capture.
+    tester_serial: str | None = None
+    # All distinct DUT serials seen during this session (extracted from
+    # `checked-otp-device-sn-write <SN>` commands). Each entry is one physical
+    # piece of hardware that was programmed in this session.
+    dut_serials: list[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -98,6 +110,9 @@ class FlowStream:
     total_duration_s: float
     stats: FlowStats
     device_sessions: list[DeviceSession] = field(default_factory=list)
+    # run_index → DUT serial captured during that run (from `checked-otp-device-sn-write`).
+    # Allows the runs table and per-run UI to identify which physical HW was tested.
+    dut_serial_by_run: dict[int, str] = field(default_factory=dict)
 
 
 def _split_lines(buf: bytes) -> tuple[list[bytes], bytes]:
@@ -157,14 +172,20 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
     out_buf = b""
     awaiting_chunks = False
     chunk_count = 0
-    # Serials are tracked per (bus, device_address) so reattached devices keep
-    # their own identity and a serial change inside one session can be detected.
-    serial_by_device: dict[tuple[int, int], str] = {}
+    # Tester serials come from `OK <SN>` responses — typically the USB-port /
+    # programming station ID, constant across all runs of a capture.
+    tester_serial_by_device: dict[tuple[int, int], str] = {}
+    # DUT (device-under-test) serial is *written* by the tester via the
+    # `checked-otp-device-sn-write <SN>` command. This is the unique identity
+    # of each physical piece of hardware being programmed; it changes per run.
+    cur_dut_serial: str | None = None
+    dut_serial_by_run: dict[int, str] = {}
     cur_device: tuple[int, int] = (packets[0].bus_id, packets[0].device_address)
     device_session_index = 0
 
     def serial() -> str | None:
-        return serial_by_device.get(cur_device)
+        # DUT serial wins over tester serial — it's the user-meaningful identity.
+        return cur_dut_serial or tester_serial_by_device.get(cur_device)
 
     def emit(**kwargs) -> FlowEvent:
         nonlocal last_ts
@@ -199,16 +220,20 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
         # event so consumers can split the timeline into device sessions.
         pkt_device = (p.bus_id, p.device_address)
         if pkt_device != cur_device:
-            prev_serial = serial_by_device.get(cur_device)
-            new_serial = serial_by_device.get(pkt_device)
+            prev_serial = tester_serial_by_device.get(cur_device)
+            new_serial = tester_serial_by_device.get(pkt_device)
             device_session_index += 1
             cur_device = pkt_device
+            # DUT serial belongs to the *current* programming run on the
+            # previous tester; a new USB session means a new physical setup,
+            # so clear it.
+            cur_dut_serial = None
             emit(
                 ts=p.ts, direction='INTERNAL', layer='meta', event_class='device_change',
                 content=(
                     f'Změna zařízení: bus {cur_device[0]}/dev {cur_device[1]}'
-                    + (f' (serial {new_serial})' if new_serial else '')
-                    + (f' — předchozí: serial {prev_serial}' if prev_serial else '')
+                    + (f' (tester {new_serial})' if new_serial else '')
+                    + (f' — předchozí tester: {prev_serial}' if prev_serial else '')
                 ),
                 severity='info', outcome='device_change',
                 device_serial=new_serial,
@@ -355,6 +380,12 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                 elif crc_valid is False:
                     sev = 'warning'
                     stats.crc_mismatches += 1
+            # Detect DUT-serial-write commands: the first argument is the unique
+            # identity of the physical hardware being programmed. From here on,
+            # subsequent events are tagged with this DUT serial.
+            if is_complete_line and cmd in cfg.device_sn_write_commands and args:
+                cur_dut_serial = args[0]
+                dut_serial_by_run[run_index] = cur_dut_serial
             display_content = raw_text if is_complete_line else f'{raw_text[:160]}{"…" if len(raw_text) > 160 else ""}  [chunked, čekám…]'
             ev = emit(ts=p.ts, direction='HOST→DEV', layer='bulk',
                       event_class='crc_probe' if is_probe else 'command',
@@ -362,6 +393,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                       cmd_crc_expected=crc_expected, cmd_crc_valid=crc_valid,
                       expected_at_run_seq=expected_pos, is_unexpected_command=is_unexpected,
                       is_out_of_order=is_ooo, severity=sev, source_file=p.source_file,
+                      device_serial=serial(),
                       is_chunked=not is_complete_line)
             cur_cmd = ev
             segment_open = True
@@ -404,7 +436,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                 if txt.startswith('OK NO'):
                     parsed_serial = extract_serial_from_response(txt)
                     if parsed_serial:
-                        serial_by_device[cur_device] = parsed_serial
+                        tester_serial_by_device[cur_device] = parsed_serial
                     outcome = 'probe_active' if cur_cmd.event_class == 'crc_probe' else 'ok_no'
                     sev = 'info' if cur_cmd.event_class == 'crc_probe' else 'warning'
                     resp_ev = emit(ts=p.ts, direction='DEV→HOST', layer='bulk', event_class='response_ok',
@@ -418,7 +450,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                 if txt.startswith('OK'):
                     parsed_serial = extract_serial_from_response(txt)
                     if parsed_serial:
-                        serial_by_device[cur_device] = parsed_serial
+                        tester_serial_by_device[cur_device] = parsed_serial
                     outcome = 'probe_activated' if cur_cmd.event_class == 'crc_probe' else 'ok'
                     sev = 'info' if cur_cmd.event_class == 'crc_probe' else 'ok'
                     resp_ev = emit(ts=p.ts, direction='DEV→HOST', layer='bulk', event_class='response_ok',
@@ -454,48 +486,74 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
     total_duration = packets[-1].ts - packets[0].ts
 
     # Materialise device_sessions from the stream so consumers don't have to
-    # re-scan events to find boundaries.
+    # re-scan events to find boundaries. Each session records:
+    #   • device_serial  – best identity (DUT preferred, tester fallback)
+    #   • tester_serial  – the OK-response (port) serial
+    #   • dut_serials    – every DUT serial seen, in order encountered
     sessions: list[DeviceSession] = []
-    if events:
-        cur_idx = events[0].device_session
-        cur_bus = events[0].bus_id
-        cur_dev = events[0].device_address
-        cur_start_seq = events[0].seq
-        cur_ts_start = events[0].ts
-        cur_count = 0
-        cur_last_seq = events[0].seq
-        cur_last_ts = events[0].ts
-        cur_last_serial: str | None = None
 
-        def _flush() -> None:
+    def _build_sessions() -> None:
+        if not events:
+            return
+        cur = {
+            "idx": events[0].device_session,
+            "bus": events[0].bus_id,
+            "dev": events[0].device_address,
+            "start_seq": events[0].seq,
+            "ts_start": events[0].ts,
+            "count": 0,
+            "last_seq": events[0].seq,
+            "last_ts": events[0].ts,
+            "last_serial": None,
+            "tester": None,
+            "duts": [],
+        }
+
+        def flush() -> None:
             sessions.append(DeviceSession(
-                session_index=cur_idx,
-                bus_id=cur_bus,
-                device_address=cur_dev,
-                device_serial=cur_last_serial,
-                start_seq=cur_start_seq,
-                end_seq=cur_last_seq,
-                ts_start=cur_ts_start,
-                ts_end=cur_last_ts,
-                event_count=cur_count,
+                session_index=cur["idx"],
+                bus_id=cur["bus"],
+                device_address=cur["dev"],
+                device_serial=cur["last_serial"],
+                start_seq=cur["start_seq"],
+                end_seq=cur["last_seq"],
+                ts_start=cur["ts_start"],
+                ts_end=cur["last_ts"],
+                event_count=cur["count"],
+                tester_serial=cur["tester"],
+                dut_serials=list(cur["duts"]),
             ))
 
         for ev in events:
-            if ev.device_session != cur_idx:
-                _flush()
-                cur_idx = ev.device_session
-                cur_bus = ev.bus_id
-                cur_dev = ev.device_address
-                cur_start_seq = ev.seq
-                cur_ts_start = ev.ts
-                cur_count = 0
-                cur_last_serial = None
-            cur_count += 1
-            cur_last_seq = ev.seq
-            cur_last_ts = ev.ts
+            if ev.device_session != cur["idx"]:
+                flush()
+                cur = {
+                    "idx": ev.device_session, "bus": ev.bus_id, "dev": ev.device_address,
+                    "start_seq": ev.seq, "ts_start": ev.ts, "count": 0,
+                    "last_seq": ev.seq, "last_ts": ev.ts,
+                    "last_serial": None, "tester": None, "duts": [],
+                }
+            cur["count"] += 1
+            cur["last_seq"] = ev.seq
+            cur["last_ts"] = ev.ts
+            # Detect DUT-write events to keep the session's dut_serials list ordered.
+            if ev.event_class == "command" and ev.cmd_name in cfg.device_sn_write_commands and ev.cmd_args:
+                dut = ev.cmd_args[0]
+                if dut and dut not in cur["duts"]:
+                    cur["duts"].append(dut)
+            # Tester serial = value parsed straight from `OK <SN>` content,
+            # *regardless* of whether a DUT has been written. This way two
+            # captures with the same tester but different DUT-write order
+            # both expose the tester ID consistently.
+            if ev.event_class == "response_ok" and not cur["tester"]:
+                m = _OK_SERIAL_RE.match((ev.content or "").strip())
+                if m:
+                    cur["tester"] = m.group(1).upper()
             if ev.device_serial:
-                cur_last_serial = ev.device_serial
-        _flush()
+                cur["last_serial"] = ev.device_serial
+        flush()
+
+    _build_sessions()
 
     last_serial = sessions[-1].device_serial if sessions else None
     return FlowStream(
@@ -505,4 +563,5 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
         total_duration_s=total_duration,
         stats=stats,
         device_sessions=sessions,
+        dut_serial_by_run=dut_serial_by_run,
     )
