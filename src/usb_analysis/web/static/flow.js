@@ -16,26 +16,22 @@ export class FlowView {
     this.seenSeqs = new Set();          // dedupe guard against duplicate page fetches
     this.total = 0;
     this.page = 1;
-    this.pageSize = 200;
+    this.pageSize = 1000;                // server max — minimise round-trips
     this.active = new Map();
     this.selectedIndex = -1;
     this.lastSelectedPairSeq = null;
     this.onSelectionChanged = null;
+    this.onProgress = null;              // (loaded, total) → void; called during fetchAll
 
-    // Guards against scroll-driven races: scroll fires many times per second,
-    // each call could try to fetch the next page concurrently. Without these,
-    // multiple in-flight fetches all read the same `this.page` value, all hit
-    // the server with the same page number, and all push duplicates → the
-    // viewer appears to repeat events and the seq column "loops back".
-    this._fetchInFlight = null;          // resolved Promise of the active fetchPage
-    this._gen = 0;                       // bumped by reload() to invalidate older fetches
+    // Generation counter so a slow fetch from a previous reload() can't
+    // corrupt fresh state. Bumped by every reload().
+    this._gen = 0;
 
     this.viewport.addEventListener("scroll", () => this.renderVirtual());
   }
 
   async reload(extra = {}) {
-    this._gen += 1;                      // invalidate any fetch responses still in flight
-    this._fetchInFlight = null;
+    this._gen += 1;
     this.page = 1;
     this.events = [];
     this.seenSeqs = new Set();
@@ -43,58 +39,67 @@ export class FlowView {
     this.inner.innerHTML = "";
     this.selectedIndex = -1;
     this.lastSelectedPairSeq = null;
-    await this.fetchPage(extra);
+    // Eagerly drain every page so virtual rendering always works against a
+    // complete dataset. Lazy on-scroll fetching was unreliable for two
+    // reasons: it raced with itself (duplicates) and it required users to
+    // scroll just to see later events at all.
+    await this.fetchAll(extra);
     this.renderVirtual();
   }
 
+  async fetchAll(extra = {}) {
+    const myGen = this._gen;
+    let firstExtra = { ...extra };
+    let safety = 0;
+    while (safety < 1000) {
+      if (myGen !== this._gen) return;
+      const before = this.events.length;
+      await this.fetchPage(firstExtra);
+      firstExtra = {};
+      safety += 1;
+      if (myGen !== this._gen) return;
+      if (this.total === 0) break;
+      if (this.events.length >= this.total) break;
+      if (this.events.length === before) break;     // empty page → stop
+      if (typeof this.onProgress === "function") {
+        this.onProgress(this.events.length, this.total);
+      }
+    }
+  }
+
   async fetchPage(extra = {}) {
-    // Coalesce concurrent calls — return the in-flight promise so callers all
-    // wait on the same network round-trip instead of issuing duplicates.
-    if (this._fetchInFlight) return this._fetchInFlight;
-    if (this.total > 0 && this.events.length >= this.total) return undefined;
+    if (this.total > 0 && this.events.length >= this.total) return;
 
     const myGen = this._gen;
     const myPage = this.page;
     const base = this.queryProvider();
     const query = `${base}&page=${myPage}&page_size=${this.pageSize}${extra.from_seq ? `&from_seq=${extra.from_seq}` : ""}`;
 
-    this._fetchInFlight = (async () => {
-      try {
-        const res = await fetch(`/api/flow/stream${query}`);
-        if (!res.ok) throw new Error(await res.text());
-        const data = await res.json();
+    const res = await fetch(`/api/flow/stream${query}`);
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
 
-        // If reload() ran while we were waiting, our results belong to a
-        // stale generation — discard so we don't pollute the new state.
-        if (myGen !== this._gen) return;
+    // Reload happened while we awaited — drop the result.
+    if (myGen !== this._gen) return;
 
-        // Defensive dedupe — even if the server somehow returns overlapping
-        // pages, we only keep events whose seq we haven't seen yet.
-        const fresh = [];
-        for (const ev of data.events || []) {
-          if (this.seenSeqs.has(ev.seq)) continue;
-          this.seenSeqs.add(ev.seq);
-          fresh.push(ev);
-        }
-        this.total = data.total || 0;
-        this.events.push(...fresh);
-        this.inner.style.height = `${this.total * ROW_HEIGHT}px`;
-        this.stats.textContent = `zobrazeno ${this.events.length} / ${this.total}`;
+    const fresh = [];
+    for (const ev of data.events || []) {
+      if (this.seenSeqs.has(ev.seq)) continue;
+      this.seenSeqs.add(ev.seq);
+      fresh.push(ev);
+    }
+    this.total = data.total || 0;
+    this.events.push(...fresh);
+    this.inner.style.height = `${this.total * ROW_HEIGHT}px`;
+    this.stats.textContent = `zobrazeno ${this.events.length} / ${this.total}`;
 
-        // Advance only if we actually consumed at least one new event.
-        // This prevents an infinite loop when the server returns an empty
-        // page beyond the real end (or when filtering rejects everything).
-        if (fresh.length > 0 && this.events.length < this.total) {
-          this.page = myPage + 1;
-        } else if (fresh.length === 0) {
-          // Stop iterating: either we're caught up or the page is empty.
-          this.total = this.events.length;
-        }
-      } finally {
-        this._fetchInFlight = null;
-      }
-    })();
-    return this._fetchInFlight;
+    if (fresh.length > 0) {
+      this.page = myPage + 1;
+    } else {
+      // Page was empty even though server claimed total > 0 — stop iterating
+      // so we don't loop forever.
+      this.total = this.events.length;
+    }
   }
 
   rowClass(e) {
@@ -134,14 +139,8 @@ export class FlowView {
   }
 
   async focusSeq(seq) {
-    let idx = this.events.findIndex((e) => e.seq === seq);
-    let safety = 0;
-    while (idx < 0 && this.events.length < this.total && safety < 200) {
-      await this.fetchPage();
-      idx = this.events.findIndex((e) => e.seq === seq);
-      safety += 1;
-    }
-    if (idx < 0) return;
+    const idx = this.events.findIndex((e) => e.seq === seq);
+    if (idx < 0) return;                 // outside the loaded set (filter out of range)
     this.viewport.scrollTop = Math.max(0, idx * ROW_HEIGHT - this.viewport.clientHeight / 3);
     await this.selectIndex(idx);
   }
@@ -149,30 +148,22 @@ export class FlowView {
   async moveSelection(delta) {
     if (!this.events.length) return;
     const current = this.selectedIndex >= 0 ? this.selectedIndex : 0;
-    const next = Math.max(0, Math.min(this.total - 1, current + delta));
-    if (next >= this.events.length - 1 && this.events.length < this.total) await this.fetchPage();
-    await this.selectIndex(Math.min(next, this.events.length - 1));
+    const next = Math.max(0, Math.min(this.events.length - 1, current + delta));
+    await this.selectIndex(next);
   }
 
-  async renderVirtual() {
+  renderVirtual() {
     const scrollTop = this.viewport.scrollTop;
     const first = Math.floor(scrollTop / ROW_HEIGHT);
     const last = Math.min(this.events.length, first + WINDOW_ROWS);
-    if (last + 30 >= this.events.length && this.events.length < this.total) {
-      await this.fetchPage();
-    }
-
-    // Recompute window after fetch — events array may have grown.
-    const first2 = Math.floor(this.viewport.scrollTop / ROW_HEIGHT);
-    const last2 = Math.min(this.events.length, first2 + WINDOW_ROWS);
 
     for (const [idx, el] of this.active.entries()) {
-      if (idx < first2 || idx >= last2) {
+      if (idx < first || idx >= last) {
         el.remove();
         this.active.delete(idx);
       }
     }
-    for (let i = first2; i < last2; i += 1) {
+    for (let i = first; i < last; i += 1) {
       if (this.active.has(i) || !this.events[i]) continue;
       const el = this.makeRow(this.events[i], i);
       this.inner.appendChild(el);

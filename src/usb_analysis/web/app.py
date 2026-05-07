@@ -42,11 +42,46 @@ MAX_UPLOAD_BYTES = int(os.environ.get("USB_ANALYSIS_MAX_UPLOAD_BYTES", str(512 *
 FLOW_CACHE_MAX_ENTRIES = int(os.environ.get("USB_ANALYSIS_FLOW_CACHE_MAX", "16"))
 # Allowed character set for capture/device identifiers.
 _DEVICE_ID_RE = _re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
+# Persist the capture-id → path map on disk so an uvicorn `--reload` restart
+# (or any process restart) doesn't invalidate every browser session that just
+# uploaded a file. The temp PCAPs themselves stay on disk under /tmp.
+_STATE_DIR = Path(os.environ.get("USB_ANALYSIS_STATE_DIR", str(Path(tempfile.gettempdir()) / "usb-analysis"))).expanduser()
+_CAPTURE_INDEX = _STATE_DIR / "captures.json"
 
 CAPTURE_IDS: dict[str, Path] = {}
 FLOW_CACHE: "OrderedDict[str, dict]" = OrderedDict()
 SUPPRESSED_EVENT_TYPES: dict[str, str] = {}
 _state_lock = threading.Lock()
+
+
+def _save_capture_index() -> None:
+    """Best-effort write of the capture map; failure is non-fatal."""
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        tmp = _CAPTURE_INDEX.with_suffix(".tmp")
+        tmp.write_text(_json.dumps({k: str(v) for k, v in CAPTURE_IDS.items()}), encoding="utf-8")
+        tmp.replace(_CAPTURE_INDEX)
+    except Exception:
+        pass
+
+
+def _load_capture_index() -> None:
+    """Re-hydrate CAPTURE_IDS at startup; drop entries whose file no longer exists."""
+    try:
+        if not _CAPTURE_INDEX.is_file():
+            return
+        import json as _json
+        data = _json.loads(_CAPTURE_INDEX.read_text(encoding="utf-8"))
+        for uid, path_s in data.items():
+            p = Path(path_s)
+            if p.is_file():
+                CAPTURE_IDS[uid] = p
+    except Exception:
+        pass
+
+
+_load_capture_index()
 
 app = FastAPI(title="usb-analysis")
 
@@ -527,6 +562,25 @@ def api_flow_run(n: int, path: str | None = Query(default=None), capture_id: str
     return {"rows": rows, "returned": len(rows), "run_index": n}
 
 
+@app.get("/api/flow/sessions")
+def api_flow_sessions(
+    path: str | None = Query(default=None),
+    capture_id: str | None = Query(default=None),
+    capture_ids: str | None = Query(default=None),
+):
+    """Return all device sessions exactly as built by the flow analyzer.
+
+    The previous client-side approach reconstructed sessions from a paginated
+    `/api/flow/stream` scan with `min_severity=info`, which silently dropped
+    `ok`-severity events (most commands and responses) and capped at 1000 rows
+    — meaning short or quiet sessions could be invisible in the Sessions tab.
+    """
+    caps = resolve_captures(_nonempty_query(path), _nonempty_query(capture_id), _nonempty_query(capture_ids))
+    stream = _get_flow_analysis(caps)["stream"]
+    rows = [asdict(s) for s in stream.device_sessions]
+    return {"rows": rows, "returned": len(rows)}
+
+
 @app.get("/api/flow/timeline")
 def api_flow_timeline(path: str | None = Query(default=None), capture_id: str | None = Query(default=None), capture_ids: str | None = Query(default=None), buckets: int = Query(default=120, ge=10, le=2000)):
     caps = resolve_captures(_nonempty_query(path), _nonempty_query(capture_id), _nonempty_query(capture_ids))
@@ -762,6 +816,7 @@ async def api_upload(file: UploadFile = File(...)):
     uid = str(uuid.uuid4())
     with _state_lock:
         CAPTURE_IDS[uid] = dest
+        _save_capture_index()
     return {"capture_id": uid, "filename": file.filename, "stored_path": str(dest)}
 
 
@@ -786,6 +841,8 @@ async def api_upload_multi(files: list[UploadFile] = File(...)):
         names.append(file.filename or uid)
     if not ids:
         raise HTTPException(status_code=400, detail="No valid LINUX USB MMAPPED captures in upload")
+    with _state_lock:
+        _save_capture_index()
     return {"capture_ids": ids, "filenames": names}
 
 

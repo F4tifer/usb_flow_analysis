@@ -114,6 +114,20 @@ def test_flow_run_endpoint(client, capture_id):
     assert "rows" in r.json()
 
 
+def test_flow_sessions_endpoint(client, capture_id):
+    """Sessions endpoint must return all device_sessions, regardless of severity."""
+    r = client.get(f"/api/flow/sessions?capture_id={capture_id}")
+    assert r.status_code == 200
+    body = r.json()
+    assert "rows" in body
+    rows = body["rows"]
+    # Synthetic capture has at least one device session.
+    assert len(rows) >= 1
+    s = rows[0]
+    for required in ("session_index", "bus_id", "device_address", "start_seq", "end_seq", "event_count"):
+        assert required in s, f"missing field {required}"
+
+
 def test_flow_search_endpoint(client, capture_id):
     r = client.get(f"/api/flow/search?capture_id={capture_id}&q=ping")
     assert r.status_code == 200
@@ -136,3 +150,38 @@ def test_baseline_rejects_disallowed_chars(client):
     # Spaces, colons, etc. are not in the allowed regex.
     r = client.get("/api/baseline/foo bar")
     assert r.status_code == 400
+
+
+def test_unknown_capture_id_returns_404(client):
+    """Stale capture IDs (e.g. left over after server restart) must 404 with
+    the exact message the JS recovery handler looks for."""
+    r = client.get("/api/summary?capture_id=does-not-exist")
+    assert r.status_code == 404
+    assert "Unknown capture id" in r.text
+
+
+def test_capture_index_persistence(tmp_path, monkeypatch):
+    """Persisted capture map should survive an in-process reset."""
+    import importlib
+    from usb_analysis.web import app as app_mod
+
+    # Use a fresh state dir so we don't pollute the shared one.
+    monkeypatch.setenv("USB_ANALYSIS_STATE_DIR", str(tmp_path))
+    importlib.reload(app_mod)
+
+    fake_pcap = tmp_path / "fake.pcap00"
+    fake_pcap.write_bytes(b"\xd4\xc3\xb2\xa1")  # at least exists
+    app_mod.CAPTURE_IDS["abc-123"] = fake_pcap
+    app_mod._save_capture_index()
+
+    # Simulate restart: clear in-memory map and reload from disk.
+    app_mod.CAPTURE_IDS.clear()
+    app_mod._load_capture_index()
+    assert "abc-123" in app_mod.CAPTURE_IDS
+    assert app_mod.CAPTURE_IDS["abc-123"] == fake_pcap
+
+    # Stale entry whose file no longer exists should be dropped on reload.
+    app_mod.CAPTURE_IDS.clear()
+    fake_pcap.unlink()
+    app_mod._load_capture_index()
+    assert "abc-123" not in app_mod.CAPTURE_IDS

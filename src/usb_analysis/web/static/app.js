@@ -97,6 +97,7 @@ function showToast(msg, kind = "info") {
 
 function toastError(err) {
   console.error(err);
+  if (err?.captureLost) return;       // already handled by handleCaptureLost
   showToast(String(err?.message || err), "error");
 }
 
@@ -116,9 +117,41 @@ async function fetchJson(url) {
   }
   if (!res.ok) {
     const text = await res.text();
+    // Server forgot our capture (e.g. process was restarted and the persisted
+    // state file is empty). Reset the client and tell the user to re-upload.
+    if (res.status === 404 && /Unknown capture id/.test(text)) {
+      handleCaptureLost();
+      const e = new Error("Capture vypršel — server ho už nezná. Nahrajte PCAP znovu.");
+      e.captureLost = true;
+      throw e;
+    }
     throw new Error(`${res.status}: ${text.slice(0, 200)}`);
   }
   return res.json();
+}
+
+let _captureLostNotified = false;
+function handleCaptureLost() {
+  // Idempotent — multiple in-flight requests can fail with the same 404,
+  // we only want to surface the toast & reset state once per loss.
+  if (_captureLostNotified) {
+    state.captureId = null;
+    state.captureIds = [];
+    return;
+  }
+  _captureLostNotified = true;
+  state.captureId = null;
+  state.captureIds = [];
+  for (const k of Object.keys(state.loaded)) state.loaded[k] = false;
+  q("pathBox").value = "";
+  setStatus("error", "Capture nedostupný — nahrajte znovu");
+  showToast("Server ztratil aktuální capture (pravděpodobně po restartu). Nahrajte PCAP znovu.", "warning");
+  q("severitySummary").hidden = true;
+  q("sessionsSection").hidden = true;
+  q("overviewEmpty").hidden = false;
+  q("overviewContent").hidden = true;
+  // Allow future failures (after re-upload) to notify again.
+  setTimeout(() => { _captureLostNotified = false; }, 5000);
 }
 
 function setStatus(kind, text) {
@@ -207,10 +240,22 @@ function ensureFlowComponents() {
   timeline = new FlowTimeline("flowTimeline");
   detailPanel.setBaseQueryProvider(baseQuery);
   detailPanel.onJumpToSeq = (seq) => jumpToSeq(seq).catch(toastError);
+  // Live progress in the loading modal during full-stream fetch.
+  flowView.onProgress = (loaded, total) => {
+    updateLoadingDetail(`${loaded.toLocaleString()} / ${total.toLocaleString()} eventů`);
+  };
 
-  timeline.onSelectBucket = (idx, total) => {
-    const approxSeq = Math.floor((idx / total) * Math.max(1, flowView.total));
-    flowView.reload({ from_seq: Math.max(1, approxSeq) }).catch(toastError);
+  timeline.onSelectBucket = (idx) => {
+    const bucket = timeline.buckets[idx];
+    if (!bucket || !flowView.events.length) return;
+    // Find the first event whose timestamp is at or beyond the bucket's start.
+    // Events are sorted by ts so binary search is overkill — linear is fine.
+    let target = null;
+    for (const ev of flowView.events) {
+      if (ev.ts >= bucket.ts) { target = ev; break; }
+    }
+    if (!target) target = flowView.events[flowView.events.length - 1];
+    flowView.focusSeq(target.seq).catch(toastError);
   };
 
   flowView.onSelectionChanged = (event) => {
@@ -420,45 +465,22 @@ async function loadOverview() {
 async function loadOverviewDerivedMetrics() {
   if (!hasCapture()) return;
 
-  // Single batched fetch for runs + errors + sessions data.
-  const sessionsByKey = new Map();
+  let sessions = [];
   let runCount = 0;
   let critical = 0, warning = 0, info = 0;
 
   try {
-    const [runs, errs, fsHead] = await Promise.all([
+    const [runs, errs, sess] = await Promise.all([
       fetchJson("/api/flow/runs" + baseQuery()),
       fetchJson("/api/flow/errors" + baseQuery() + "&min_severity=info"),
-      fetchJson("/api/flow/stream" + baseQuery() + "&min_severity=info&page_size=1"),
+      fetchJson("/api/flow/sessions" + baseQuery()),
     ]);
     runCount = (runs.rows || []).length;
+    sessions = sess.rows || [];
     const errRows = errs.rows || [];
     critical = errRows.filter((r) => r.severity === "critical").length;
     warning  = errRows.filter((r) => r.severity === "warning").length;
     info     = errRows.filter((r) => r.severity === "info").length;
-
-    const totalEvents = fsHead.total || 0;
-    if (totalEvents > 0) {
-      const fsAll = await fetchJson("/api/flow/stream" + baseQuery()
-        + "&min_severity=info&page_size=" + Math.min(totalEvents, 2000));
-      for (const ev of fsAll.events || []) {
-        const k = ev.device_session;
-        if (!sessionsByKey.has(k)) {
-          sessionsByKey.set(k, {
-            session_index: k,
-            bus_id: ev.bus_id,
-            device_address: ev.device_address,
-            device_serial: ev.device_serial || null,
-            start_seq: ev.seq,
-            end_seq: ev.seq,
-          });
-        } else {
-          const s = sessionsByKey.get(k);
-          s.end_seq = ev.seq;
-          if (ev.device_serial && !s.device_serial) s.device_serial = ev.device_serial;
-        }
-      }
-    }
   } catch (err) {
     console.warn("Overview metrics partial failure:", err);
   }
@@ -466,14 +488,14 @@ async function loadOverviewDerivedMetrics() {
   q("mRuns").textContent = runCount || "—";
   q("mCritical").textContent = critical;
   q("mWarning").textContent = warning;
-  q("mSessions").textContent = sessionsByKey.size || "—";
+  q("mSessions").textContent = sessions.length || "—";
 
   q("badgeCritical").textContent = critical;
   q("badgeWarning").textContent = warning;
   q("badgeInfo").textContent = info;
   q("severitySummary").hidden = false;
 
-  renderSidebarSessions([...sessionsByKey.values()]);
+  renderSidebarSessions(sessions);
 }
 
 function renderDist(obj) {
@@ -613,37 +635,14 @@ async function loadErrors() {
 // ============================================================
 async function loadSessions() {
   if (!hasCapture()) return;
-  // Build sessions from flow events.
-  const fs = await fetchJson("/api/flow/stream" + baseQuery() + "&min_severity=info&page_size=1");
-  const total = fs.total || 0;
-  const sessions = new Map();
-  if (total > 0) {
-    const data = await fetchJson("/api/flow/stream" + baseQuery() + "&min_severity=info&page_size=" + Math.min(total, 1000));
-    for (const ev of data.events || []) {
-      const k = ev.device_session;
-      if (!sessions.has(k)) {
-        sessions.set(k, {
-          session_index: k,
-          bus_id: ev.bus_id,
-          device_address: ev.device_address,
-          device_serial: ev.device_serial || null,
-          start_seq: ev.seq,
-          end_seq: ev.seq,
-          ts_start: ev.ts,
-          ts_end: ev.ts,
-          event_count: 0,
-        });
-      }
-      const s = sessions.get(k);
-      s.end_seq = ev.seq;
-      s.ts_end = ev.ts;
-      s.event_count += 1;
-      if (ev.device_serial && !s.device_serial) s.device_serial = ev.device_serial;
-    }
-  }
+  // Authoritative list straight from the flow analyzer; includes every
+  // (bus, device_address) transition regardless of severity filter.
+  const data = await fetchJson("/api/flow/sessions" + baseQuery());
+  const sessions = data.rows || [];
+
   const sBody = q("sessionsTableBody");
   sBody.innerHTML = "";
-  for (const s of sessions.values()) {
+  for (const s of sessions) {
     const tr = document.createElement("tr");
     const dur = fmtDuration(s.ts_end - s.ts_start);
     tr.innerHTML = `
