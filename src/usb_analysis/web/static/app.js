@@ -449,14 +449,30 @@ async function loadOverview() {
 
   q("overviewXfer").innerHTML = renderDist(summary.transfer_types || {});
   q("overviewEvents").innerHTML = renderDist(summary.event_types || {});
-  q("mRuns").textContent = "…";
-  q("mCritical").textContent = "…";
-  q("mWarning").textContent = "…";
-  q("mSessions").textContent = "…";
-  q("badgeCritical").textContent = "…";
-  q("badgeWarning").textContent = "…";
-  q("badgeInfo").textContent = "…";
+
+  // Animated loaders so the user sees the metrics are *being computed*, not
+  // broken. CSS @keyframes + middle <span> implement a 3-dot pulse.
+  const metricLoader = `<span class="metric-loading"><span></span></span>`;
+  const badgeLoader = `<span class="badge-loading"><span></span></span>`;
+  q("mRuns").innerHTML = metricLoader;
+  q("mCritical").innerHTML = metricLoader;
+  q("mWarning").innerHTML = metricLoader;
+  q("mSessions").innerHTML = metricLoader;
+  q("badgeCritical").innerHTML = badgeLoader;
+  q("badgeWarning").innerHTML = badgeLoader;
+  q("badgeInfo").innerHTML = badgeLoader;
   q("severitySummary").hidden = false;
+
+  // Sidebar sessions: show skeleton placeholders that shimmer until real data arrives.
+  const sessionsList = q("sessionsList");
+  const sessionsWrap = q("sessionsSection");
+  if (sessionsList && sessionsWrap) {
+    sessionsWrap.hidden = false;
+    sessionsList.innerHTML = `
+      <div class="session-skeleton"><div class="session-skeleton-line"></div><div class="session-skeleton-line short"></div></div>
+      <div class="session-skeleton"><div class="session-skeleton-line"></div><div class="session-skeleton-line short"></div></div>
+    `;
+  }
 
   // Heavy derived metrics are loaded in background to keep overview responsive.
   void loadOverviewDerivedMetrics();
@@ -468,34 +484,60 @@ async function loadOverviewDerivedMetrics() {
   let sessions = [];
   let runCount = 0;
   let critical = 0, warning = 0, info = 0;
+  let failed = false;
 
   try {
-    const [runs, errs, sess] = await Promise.all([
-      fetchJson("/api/flow/runs" + baseQuery()),
-      fetchJson("/api/flow/errors" + baseQuery() + "&min_severity=info"),
-      fetchJson("/api/flow/sessions" + baseQuery()),
-    ]);
-    runCount = (runs.rows || []).length;
-    sessions = sess.rows || [];
-    const errRows = errs.rows || [];
-    critical = errRows.filter((r) => r.severity === "critical").length;
-    warning  = errRows.filter((r) => r.severity === "warning").length;
-    info     = errRows.filter((r) => r.severity === "info").length;
+    // Fire each request independently — a slow /api/flow/sessions shouldn't
+    // hold up the runs/errors metrics. Each result fills in its own widget
+    // as soon as it arrives so the user sees progressive completion.
+    const runsP = fetchJson("/api/flow/runs" + baseQuery())
+      .then((runs) => {
+        runCount = (runs.rows || []).length;
+        q("mRuns").textContent = runCount || "—";
+      })
+      .catch((err) => { console.warn("runs:", err); failed = true; q("mRuns").textContent = "—"; });
+
+    const errsP = fetchJson("/api/flow/errors" + baseQuery() + "&min_severity=info")
+      .then((errs) => {
+        const errRows = errs.rows || [];
+        critical = errRows.filter((r) => r.severity === "critical").length;
+        warning  = errRows.filter((r) => r.severity === "warning").length;
+        info     = errRows.filter((r) => r.severity === "info").length;
+        q("mCritical").textContent = critical;
+        q("mWarning").textContent = warning;
+        q("badgeCritical").textContent = critical;
+        q("badgeWarning").textContent = warning;
+        q("badgeInfo").textContent = info;
+      })
+      .catch((err) => {
+        console.warn("errors:", err); failed = true;
+        q("mCritical").textContent = "—";
+        q("mWarning").textContent = "—";
+        q("badgeCritical").textContent = "—";
+        q("badgeWarning").textContent = "—";
+        q("badgeInfo").textContent = "—";
+      });
+
+    const sessP = fetchJson("/api/flow/sessions" + baseQuery())
+      .then((sess) => {
+        sessions = sess.rows || [];
+        q("mSessions").textContent = sessions.length || "—";
+        renderSidebarSessions(sessions);
+      })
+      .catch((err) => {
+        console.warn("sessions:", err); failed = true;
+        q("mSessions").textContent = "—";
+        const list = q("sessionsList");
+        if (list) list.innerHTML = `<div class="muted">Sessions se nepodařilo načíst.</div>`;
+      });
+
+    await Promise.allSettled([runsP, errsP, sessP]);
   } catch (err) {
     console.warn("Overview metrics partial failure:", err);
+    failed = true;
   }
 
-  q("mRuns").textContent = runCount || "—";
-  q("mCritical").textContent = critical;
-  q("mWarning").textContent = warning;
-  q("mSessions").textContent = sessions.length || "—";
-
-  q("badgeCritical").textContent = critical;
-  q("badgeWarning").textContent = warning;
-  q("badgeInfo").textContent = info;
-  q("severitySummary").hidden = false;
-
-  renderSidebarSessions(sessions);
+  if (failed) showToast("Některé metriky se nepodařilo načíst — viz konzole.", "warning");
 }
 
 function renderDist(obj) {
@@ -920,6 +962,82 @@ function wireDeep() {
   q("btnDeep").addEventListener("click", () => loadDeep().catch(toastError));
 }
 
+// ============================================================
+// About modal
+// ============================================================
+function fmtBytes(n) {
+  if (n == null) return "—";
+  if (n >= 1024 * 1024 * 1024) return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (n >= 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
+async function showAbout() {
+  const overlay = q("aboutOverlay");
+  const body = q("aboutBody");
+  body.innerHTML = `<div class="muted">Načítám…</div>`;
+  overlay.hidden = false;
+
+  try {
+    const info = await fetchJson("/api/info");
+    const cfg = info.config || {};
+    const rt = info.runtime || {};
+    body.innerHTML = `
+      <div>
+        <span class="about-version-pill">${escapeHtml(info.name)} v${escapeHtml(info.version)}</span>
+      </div>
+      <p class="about-description">${escapeHtml(info.description || "")}</p>
+
+      <div class="about-section">
+        <h3>Prostředí</h3>
+        <dl class="about-grid">
+          <dt>Python</dt><dd>${escapeHtml(info.python || "?")}</dd>
+          <dt>Platforma</dt><dd>${escapeHtml(info.platform || "?")}</dd>
+        </dl>
+      </div>
+
+      <div class="about-section">
+        <h3>Konfigurace</h3>
+        <dl class="about-grid">
+          <dt>Limit uploadu</dt><dd>${fmtBytes(cfg.max_upload_bytes)}</dd>
+          <dt>Flow cache</dt><dd>${cfg.flow_cache_max_entries ?? "?"} záznamů (LRU)</dd>
+          <dt>State dir</dt><dd>${escapeHtml(cfg.state_dir || "?")}</dd>
+        </dl>
+      </div>
+
+      <div class="about-section">
+        <h3>Aktuální stav</h3>
+        <dl class="about-grid">
+          <dt>Captures v paměti</dt><dd>${rt.captures_loaded ?? 0}</dd>
+          <dt>Cachované flow</dt><dd>${rt.flow_cache_size ?? 0}</dd>
+        </dl>
+      </div>
+    `;
+  } catch (err) {
+    body.innerHTML = `<div class="muted">Nepodařilo se načíst info: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+function hideAbout() {
+  q("aboutOverlay").hidden = true;
+}
+
+function wireAbout() {
+  q("brandButton").addEventListener("click", () => showAbout().catch(toastError));
+  q("aboutClose").addEventListener("click", hideAbout);
+  q("aboutOverlay").addEventListener("click", (ev) => {
+    // Click on backdrop (not the card) closes the modal.
+    if (ev.target.id === "aboutOverlay") hideAbout();
+  });
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && !q("aboutOverlay").hidden) {
+      ev.preventDefault();
+      hideAbout();
+    }
+  });
+}
+
 function wireKeyboard() {
   window.addEventListener("keydown", async (ev) => {
     if (ev.target && ["INPUT", "TEXTAREA", "SELECT"].includes(ev.target.tagName)) return;
@@ -967,6 +1085,7 @@ function boot() {
   wireErrors();
   wireSessions();
   wireDeep();
+  wireAbout();
   wireKeyboard();
   setStatus("empty", "Žádný capture nenahrán");
 }

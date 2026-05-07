@@ -8,10 +8,11 @@
 </head>
 <body>
   <header class="app-header">
-    <div class="brand">
+    <button type="button" class="brand brand-button" id="brandButton" title="O aplikaci">
       <span class="brand-mark">USB</span>
       <span class="brand-title">Analysis</span>
-    </div>
+      <span class="brand-info-icon" aria-hidden="true">i</span>
+    </button>
     <div class="capture-status" id="captureStatus">
       <span class="status-dot status-empty"></span>
       <span class="status-text">Žádný capture nenahrán</span>
@@ -668,6 +669,18 @@
   </div>
 
   <div id="toast" class="toast" hidden></div>
+
+  <div id="aboutOverlay" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <div class="modal-card">
+      <header class="modal-header">
+        <h2 id="aboutTitle">O aplikaci</h2>
+        <button type="button" class="modal-close" id="aboutClose" aria-label="Zavřít">×</button>
+      </header>
+      <div class="modal-body" id="aboutBody">
+        <div class="muted">Načítám…</div>
+      </div>
+    </div>
+  </div>
 
   <div id="loadingOverlay" class="loading-overlay" hidden role="dialog" aria-live="assertive" aria-busy="true">
     <div class="loading-modal">

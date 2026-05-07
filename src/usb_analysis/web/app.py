@@ -848,6 +848,29 @@ async def api_upload_multi(files: list[UploadFile] = File(...)):
     return {"capture_ids": ids, "filenames": names}
 
 
+@app.get("/api/info")
+def api_info():
+    """Application metadata for the About modal."""
+    import sys as _sys
+    from usb_analysis import __version__
+    return {
+        "name": "usb-analysis",
+        "version": __version__,
+        "description": "Streamovaná analýza USB komunikace z PCAP souborů (LINKTYPE_USB_LINUX_MMAPPED).",
+        "python": _sys.version.split()[0],
+        "platform": _sys.platform,
+        "config": {
+            "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "flow_cache_max_entries": FLOW_CACHE_MAX_ENTRIES,
+            "state_dir": str(_STATE_DIR),
+        },
+        "runtime": {
+            "captures_loaded": len(CAPTURE_IDS),
+            "flow_cache_size": len(FLOW_CACHE),
+        },
+    }
+
+
 @app.get("/")
 def spa_index():
     index = STATIC_DIR / "index.html"
