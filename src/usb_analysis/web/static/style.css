@@ -321,6 +321,7 @@ input[type="number"] { width: 100%; }
 .inline-field select { font-size: 0.85rem; min-width: 90px; }
 
 .inline-field.flow-search input { min-width: 200px; }
+.inline-field.flow-jump input { min-width: 110px; }
 
 button {
   font-family: inherit;

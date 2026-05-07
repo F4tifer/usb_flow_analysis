@@ -77,6 +77,7 @@
           <li><kbd>↑</kbd>/<kbd>↓</kbd> pohyb ve flow</li>
           <li><kbd>PgUp</kbd>/<kbd>PgDn</kbd> rychlý skok</li>
           <li><kbd>P</kbd> skok na párovanou událost</li>
+          <li><kbd>G</kbd> skok na seq číslo</li>
           <li><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> historie</li>
           <li><kbd>1</kbd>–<kbd>9</kbd> přepnutí záložky</li>
         </ul>
@@ -232,6 +233,7 @@
             <label class="inline-field">
               Severity
               <select id="flowSeverity">
+                <option value="ok">ALL</option>
                 <option value="info">info+</option>
                 <option value="warning" selected>warning+</option>
                 <option value="critical">critical</option>
@@ -254,6 +256,11 @@
               Search
               <input type="text" id="flowSearch" placeholder="ERROR, DN/DP…"/>
             </label>
+            <label class="inline-field flow-jump" title="Skoč na konkrétní seq číslo události (Enter)">
+              Skoč na #
+              <input type="number" id="flowJumpSeq" placeholder="např. 423" min="1"/>
+            </label>
+            <button type="button" id="btnFlowJump" class="btn-secondary" title="Skoč na zadané seq">→ #</button>
             <div class="toolbar-spacer"></div>
             <button type="button" id="flowBack" class="btn-ghost" title="Zpět (Alt+←)">←</button>
             <button type="button" id="flowForward" class="btn-ghost" title="Vpřed (Alt+→)">→</button>
@@ -292,6 +299,7 @@
             <label class="inline-field">
               Min severity
               <select id="errSeverity">
+                <option value="ok">ALL</option>
                 <option value="info">info+</option>
                 <option value="warning" selected>warning+</option>
                 <option value="critical">critical</option>

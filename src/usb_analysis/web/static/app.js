@@ -868,6 +868,33 @@ function wireFlow() {
   });
   q("flowBack").addEventListener("click", () => historyBack().catch(toastError));
   q("flowForward").addEventListener("click", () => historyForward().catch(toastError));
+
+  // Jump-to-seq: number input + button. Enter inside the input triggers it too.
+  const doJump = async () => {
+    const raw = q("flowJumpSeq").value.trim();
+    const seq = Number.parseInt(raw, 10);
+    if (!Number.isFinite(seq) || seq < 1) {
+      showToast("Zadej platné seq číslo (kladné celé)", "warning");
+      return;
+    }
+    ensureFlowComponents();
+    if (!flowView.events.length) {
+      // Make sure flow data is loaded before searching for the seq.
+      await loadFlow();
+    }
+    await withLoading(`Skok na seq #${seq}`, async () => {
+      await jumpToSeq(seq);
+      const found = flowView.events.find((e) => e.seq === seq);
+      if (!found) showToast(`Seq #${seq} mimo aktuální filtr/rozsah`, "warning");
+    });
+  };
+  q("btnFlowJump").addEventListener("click", () => doJump().catch(toastError));
+  q("flowJumpSeq").addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      doJump().catch(toastError);
+    }
+  });
 }
 
 function wireErrors() {
@@ -908,6 +935,12 @@ function wireKeyboard() {
       ev.preventDefault();
       const cur = flowView.events[flowView.selectedIndex];
       if (cur?.paired_seq) await jumpToSeq(cur.paired_seq);
+    }
+    else if (ev.key.toLowerCase() === "g") {
+      ev.preventDefault();
+      const inp = q("flowJumpSeq");
+      inp.focus();
+      inp.select();
     }
   });
 }
