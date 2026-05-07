@@ -11,8 +11,8 @@ from collections import Counter, OrderedDict
 from dataclasses import asdict
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi import FastAPI, File, HTTPException, Query, Response, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask
 
@@ -873,11 +873,47 @@ def api_info():
 
 @app.get("/")
 def spa_index():
+    """Serve index.html with cache-busting query strings on every static
+    asset reference. The token is the package version, so any deploy that
+    bumps `pyproject.toml` automatically forces browsers to re-download
+    HTML, JS and CSS — preventing the "stale CSS, fresh JS" mismatch that
+    breaks animations and layout."""
+    from usb_analysis import __version__
     index = STATIC_DIR / "index.html"
     if not index.is_file():
         raise HTTPException(status_code=500, detail=f"Missing static bundle: {index}")
-    return FileResponse(index)
+    text = index.read_text(encoding="utf-8")
+    bust = __version__.replace(" ", "")
+    text = text.replace('href="/static/style.css"', f'href="/static/style.css?v={bust}"')
+    text = text.replace('src="/static/app.js"',     f'src="/static/app.js?v={bust}"')
+    return HTMLResponse(text, headers={"Cache-Control": "no-cache, must-revalidate"})
+
+
+@app.get("/favicon.ico")
+def favicon():
+    """Tiny inline favicon — silences the 404 every browser logs on first
+    page load. We don't ship a real icon yet; this returns a 1×1 transparent
+    PNG so DevTools/Console stays clean during demos."""
+    # 1×1 transparent PNG (smallest valid PNG).
+    png = (
+        b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
+        b"\x08\x06\x00\x00\x00\x1f\x15\xc4\x89\x00\x00\x00\rIDATx\x9cc\x00\x01"
+        b"\x00\x00\x05\x00\x01\r\n-\xb4\x00\x00\x00\x00IEND\xaeB`\x82"
+    )
+    return Response(content=png, media_type="image/png")
+
+
+class _NoCacheStatic(StaticFiles):
+    """StaticFiles subclass that adds short-revalidation headers. ES modules
+    imported from JS bypass HTML cache-busting, so we tell the browser to
+    always revalidate (ETag still allows 304s, so it's near-zero overhead)."""
+
+    async def get_response(self, path, scope):
+        resp = await super().get_response(path, scope)
+        if hasattr(resp, "headers"):
+            resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+        return resp
 
 
 if STATIC_DIR.is_dir():
-    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="asset")
+    app.mount("/static", _NoCacheStatic(directory=str(STATIC_DIR)), name="asset")
