@@ -523,7 +523,8 @@ def api_flow_errors(
     caps = resolve_captures(_nonempty_query(path), _nonempty_query(capture_id), _nonempty_query(capture_ids))
     data = _get_flow_analysis(caps)
     errors = data["errors"]
-    sev_rank = {"info": 1, "warning": 2, "critical": 3}
+    # Keep ranks aligned with /api/flow/stream so min_severity=ok works from UI.
+    sev_rank = {"ok": 0, "info": 1, "warning": 2, "critical": 3, "suppressed": -1}
     min_rank = sev_rank.get(min_severity, 2)
     out = []
     stream = data["stream"]
