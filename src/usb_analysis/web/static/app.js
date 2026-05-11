@@ -101,15 +101,34 @@ function toastError(err) {
   showToast(String(err?.message || err), "error");
 }
 
-async function fetchJson(url) {
+// Per-endpoint timeout heuristic. Building a flow-stream from a large PCAP
+// (50 MB / 30k events) routinely takes 30–90 s on first call (no cache yet);
+// the previous 20 s blanket timeout was killing legitimate analyses. Fast
+// endpoints (info, packets, summary on small files) keep a tight bound so a
+// truly hung server still surfaces as an error instead of hanging forever.
+const _DEFAULT_TIMEOUT_MS = 30_000;
+const _SLOW_TIMEOUT_MS    = 600_000;   // 10 minutes
+const _SLOW_PATH_RE = /^\/api\/(flow\/(stream|errors|runs|run\/|sessions|context|event|search|completeness|timeline)|deep\/|aggregate|summary)/;
+
+function _timeoutFor(url) {
+  try {
+    const path = new URL(url, location.origin).pathname;
+    if (_SLOW_PATH_RE.test(path)) return _SLOW_TIMEOUT_MS;
+  } catch {}
+  return _DEFAULT_TIMEOUT_MS;
+}
+
+async function fetchJson(url, opts = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 20000);
+  const timeoutMs = opts.timeoutMs ?? _timeoutFor(url);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   let res;
   try {
     res = await fetch(url, { signal: controller.signal });
   } catch (err) {
     if (err?.name === "AbortError") {
-      throw new Error(`Timeout při volání API: ${url}`);
+      const secs = (timeoutMs / 1000).toFixed(0);
+      throw new Error(`Timeout při volání API (${secs}s): ${url}`);
     }
     throw err;
   } finally {
@@ -119,8 +138,11 @@ async function fetchJson(url) {
     const text = await res.text();
     // Server forgot our capture (e.g. process was restarted and the persisted
     // state file is empty). Reset the client and tell the user to re-upload.
-    if (res.status === 404 && /Unknown capture id/.test(text)) {
-      handleCaptureLost();
+    if (res.status === 404 && CAPTURE_LOST_RE.test(text)) {
+      // Pass the captureId that was active when the failing request was
+      // issued — if the user re-uploaded between request and response, the
+      // current captureId differs and we must NOT reset the fresh state.
+      handleCaptureLost(state.captureId, state.captureIds.slice());
       const e = new Error("Capture vypršel — server ho už nezná. Nahrajte PCAP znovu.");
       e.captureLost = true;
       throw e;
@@ -130,10 +152,21 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// Contract with the server: any 404 whose body matches this regex means the
+// referenced capture_id is no longer registered. Server-side string lives in
+// app.py:_resolve_capture_id ("Unknown capture id: ...").
+const CAPTURE_LOST_RE = /Unknown capture id/;
+
 let _captureLostNotified = false;
-function handleCaptureLost() {
-  // Idempotent — multiple in-flight requests can fail with the same 404,
-  // we only want to surface the toast & reset state once per loss.
+function handleCaptureLost(failingCaptureId, failingCaptureIds) {
+  // Skip the reset entirely if state already moved on — a stale in-flight
+  // request finishing after a successful re-upload must not wipe the new
+  // valid captureId.
+  const stateUnchanged =
+    failingCaptureId === state.captureId &&
+    failingCaptureIds.length === state.captureIds.length &&
+    failingCaptureIds.every((id, i) => id === state.captureIds[i]);
+  if (!stateUnchanged) return;
   if (_captureLostNotified) {
     state.captureId = null;
     state.captureIds = [];
@@ -397,6 +430,10 @@ const TAB_LOADERS = {
   flow:     { fn: loadFlow,     title: "Analyzuji flow",  detail: "Build flow stream + causal + detectors" },
   errors:   { fn: loadErrors,   title: "Načítám chyby",   detail: "" },
   sessions: { fn: loadSessions, title: "Načítám sessions a runy", detail: "" },
+  // Deep is deliberately not auto-run on tab switch — segmentation + scoring +
+  // rule mining is heavy. User must click "Spustit hloubkovou analýzu". We
+  // still register a no-op loader so loadTab() doesn't silently mark it loaded.
+  deep:     { fn: () => {}, title: "", detail: "" },
   export:   { fn: () => { setupExport(); }, title: "", detail: "" },
   // Help is static HTML, doesn't need a capture or any fetch.
   help:     { fn: () => {}, title: "", detail: "" },
@@ -682,25 +719,110 @@ async function loadErrors() {
 // ============================================================
 // Sessions / Runs
 // ============================================================
+// Cached payloads for the Sessions tab so the search input can re-render
+// without going back to the server on every keystroke.
+let _sessionsData = [];
+let _runsData = [];
+
 async function loadSessions() {
   if (!hasCapture()) return;
   // Authoritative list straight from the flow analyzer; includes every
   // (bus, device_address) transition regardless of severity filter.
-  const data = await fetchJson("/api/flow/sessions" + baseQuery());
-  const sessions = data.rows || [];
+  const [sessData, runsData] = await Promise.all([
+    fetchJson("/api/flow/sessions" + baseQuery()),
+    fetchJson("/api/flow/runs" + baseQuery()),
+  ]);
+  _sessionsData = sessData.rows || [];
+  _runsData = runsData.rows || [];
+  applySessionsFilter();
+}
 
+function _makeDutMatcher(term) {
+  /**
+   * Build a matcher for the DUT-SN search box. **Case-sensitive** — serial
+   * numbers are tightly tied to their casing in the protocol, so D736D92D
+   * and d736d92d must not collide. Plain substring match by default; if the
+   * input is wrapped in slashes (`/regex/`) it's treated as a case-sensitive
+   * regex. Bad regex falls back to substring so the user never sees an error.
+   */
+  if (!term) {
+    return {
+      empty: true,
+      test: () => true,
+      highlight: (s) => escapeHtml(s ?? ""),
+    };
+  }
+  let re = null;
+  if (term.length > 2 && term.startsWith("/") && term.endsWith("/")) {
+    // `g` only — no `i`. Case sensitivity is intentional.
+    try { re = new RegExp(term.slice(1, -1), "g"); } catch { re = null; }
+  }
+
+  const test = (s) => {
+    const v = String(s ?? "");
+    if (!v) return false;
+    if (re) { re.lastIndex = 0; return re.test(v); }
+    return v.includes(term);
+  };
+
+  const highlight = (s) => {
+    const v = String(s ?? "");
+    if (!v) return "";
+    if (re) {
+      let out = "", last = 0;
+      re.lastIndex = 0;
+      let m;
+      while ((m = re.exec(v))) {
+        out += escapeHtml(v.slice(last, m.index));
+        out += `<mark>${escapeHtml(m[0])}</mark>`;
+        last = m.index + m[0].length;
+        if (m[0].length === 0) re.lastIndex += 1;
+      }
+      out += escapeHtml(v.slice(last));
+      return out;
+    }
+    let out = "", i = 0;
+    while (true) {
+      const idx = v.indexOf(term, i);
+      if (idx < 0) { out += escapeHtml(v.slice(i)); break; }
+      out += escapeHtml(v.slice(i, idx))
+           + `<mark>${escapeHtml(v.slice(idx, idx + term.length))}</mark>`;
+      i = idx + term.length;
+    }
+    return out;
+  };
+
+  return { empty: false, test, highlight };
+}
+
+function applySessionsFilter() {
+  const term = q("sessionsSearch").value.trim();
+  const matcher = _makeDutMatcher(term);
+
+  const matchedSessions = matcher.empty
+    ? _sessionsData
+    : _sessionsData.filter((s) => (s.dut_serials || []).some((d) => matcher.test(d)));
+
+  const matchedRuns = matcher.empty
+    ? _runsData
+    : _runsData.filter((r) => matcher.test(r.dut_serial || ""));
+
+  // Render Sessions
   const sBody = q("sessionsTableBody");
   sBody.innerHTML = "";
-  for (const s of sessions) {
+  for (const s of matchedSessions) {
     const tr = document.createElement("tr");
     const dur = fmtDuration(s.ts_end - s.ts_start);
-    const duts = (s.dut_serials && s.dut_serials.length) ? s.dut_serials.join(", ") : "—";
+    const dutsRaw = s.dut_serials || [];
+    const duts = dutsRaw.length
+      ? dutsRaw.map((d) => matcher.highlight(d)).join(", ")
+      : "—";
     tr.innerHTML = `
       <td>${s.session_index}</td>
       <td>${s.bus_id}</td>
       <td>${s.device_address}</td>
       <td>${escapeHtml(s.tester_serial || "—")}</td>
-      <td>${escapeHtml(duts)}</td>
+      <td>${duts}</td>
       <td>${s.start_seq}</td>
       <td>${s.end_seq}</td>
       <td>${s.event_count}</td>
@@ -710,16 +832,18 @@ async function loadSessions() {
     tr.onclick = () => jumpToSeq(s.start_seq).catch(toastError);
     sBody.append(tr);
   }
+  if (!matchedSessions.length) {
+    sBody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:1rem">Žádná session neobsahuje hledaný DUT SN.</td></tr>`;
+  }
 
-  // Runs
-  const runs = await fetchJson("/api/flow/runs" + baseQuery());
+  // Render Runs
   const rBody = q("runsBody");
   rBody.innerHTML = "";
-  for (const r of runs.rows || []) {
+  for (const r of matchedRuns) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${r.run_index}</td>
-      <td>${escapeHtml(r.dut_serial || "—")}</td>
+      <td>${r.dut_serial ? matcher.highlight(r.dut_serial) : "—"}</td>
       <td>${r.start_seq}</td>
       <td>${r.end_seq}</td>
       <td>${r.cmd_count}</td>
@@ -729,6 +853,19 @@ async function loadSessions() {
     `;
     tr.onclick = () => jumpToSeq(r.start_seq).catch(toastError);
     rBody.append(tr);
+  }
+  if (!matchedRuns.length) {
+    rBody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:1rem">Žádný run neobsahuje hledaný DUT SN.</td></tr>`;
+  }
+
+  // Match info
+  const info = q("sessionsMatchInfo");
+  if (matcher.empty) {
+    info.textContent = `${_sessionsData.length} sessions · ${_runsData.length} runů`;
+  } else {
+    info.textContent =
+      `${matchedSessions.length}/${_sessionsData.length} sessions · ` +
+      `${matchedRuns.length}/${_runsData.length} runů odpovídá`;
   }
 }
 
@@ -782,7 +919,8 @@ async function loadDeep() {
         `;
         rBody.append(tr);
       }
-      state.loaded.deep = true;
+      // Intentionally don't lock `state.loaded.deep` — user may want to re-run
+      // after changing filters or upload, so each button click should re-fetch.
       setStatus("ready", "Deep analýza hotová");
     } catch (err) {
       setStatus("error", "Deep selhala");
@@ -954,8 +1092,27 @@ function wireErrors() {
   q("errLayer").addEventListener("change", () => loadErrors().catch(toastError));
 }
 
+function _debounce(fn, ms) {
+  let t = null;
+  return function (...args) {
+    if (t) clearTimeout(t);
+    t = setTimeout(() => { t = null; fn.apply(this, args); }, ms);
+  };
+}
+
 function wireSessions() {
   q("btnLoadSessions").addEventListener("click", () => loadSessions().catch(toastError));
+  // Live filter — re-renders cached data after a brief idle period. Debounce
+  // keeps typing snappy with 1000+ sessions where DOM rebuild per keystroke
+  // would otherwise stall the input.
+  const debouncedFilter = _debounce(() => {
+    try { applySessionsFilter(); } catch (err) { toastError(err); }
+  }, 80);
+  q("sessionsSearch").addEventListener("input", debouncedFilter);
+  q("btnSessionsClear").addEventListener("click", () => {
+    q("sessionsSearch").value = "";
+    applySessionsFilter();
+  });
 }
 
 function wireDeep() {
@@ -998,9 +1155,11 @@ async function showAbout() {
       </div>
 
       <div class="about-section">
-        <h3>Konfigurace</h3>
+        <h3>Limity uploadu</h3>
         <dl class="about-grid">
-          <dt>Limit uploadu</dt><dd>${fmtBytes(cfg.max_upload_bytes)}</dd>
+          <dt>Per soubor</dt><dd>${fmtBytes(cfg.max_upload_bytes)}</dd>
+          <dt>Souborů najednou</dt><dd>${cfg.max_upload_files ?? "?"}</dd>
+          <dt>Celkem najednou</dt><dd>${fmtBytes(cfg.max_upload_total_bytes)}</dd>
           <dt>Flow cache</dt><dd>${cfg.flow_cache_max_entries ?? "?"} záznamů (LRU)</dd>
           <dt>State dir</dt><dd>${escapeHtml(cfg.state_dir || "?")}</dd>
         </dl>
@@ -1047,9 +1206,6 @@ function wireKeyboard() {
       const idx = parseInt(ev.key, 10) - 1;
       const tab = $$(".tab")[idx];
       if (tab) { ev.preventDefault(); activateTab(tab.dataset.tab); }
-    }
-    else if (flowView && q("flow")?.classList?.contains?.("active")) {
-      // ignored — flow view registers its own
     }
     if (!flowView) return;
     const flowActive = $$(".tab.active")[0]?.dataset.tab === "flow";

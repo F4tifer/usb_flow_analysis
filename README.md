@@ -120,8 +120,11 @@ nebo absolutní `path` (lokální použití).
 
 | Proměnná | Default | Popis |
 |----------|---------|-------|
-| `USB_ANALYSIS_MAX_UPLOAD_BYTES` | `536870912` (512 MB) | Limit velikosti uploadu |
+| `USB_ANALYSIS_MAX_UPLOAD_BYTES` | `2147483648` (2 GB) | Limit velikosti **jednoho** souboru |
+| `USB_ANALYSIS_MAX_UPLOAD_FILES` | `64` | Max počet souborů v jednom multi-uploadu |
+| `USB_ANALYSIS_MAX_UPLOAD_TOTAL_BYTES` | `8 × MAX_UPLOAD_BYTES` (16 GB) | Souhrnný limit pro multi-upload |
 | `USB_ANALYSIS_FLOW_CACHE_MAX` | `16` | Max počet cachovaných flow analýz (LRU) |
+| `USB_ANALYSIS_STATE_DIR` | `$TMPDIR/usb-analysis` | Adresář pro perzistenci capture indexu |
 | `USB_ANALYSIS_LARGE_SAMPLE` | — | Cesta k lokálnímu velkému PCAPu pro test |
 
 ## Knihovna

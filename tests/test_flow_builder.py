@@ -95,6 +95,64 @@ def test_device_change_emits_session_boundary():
     assert {e.device_session for e in stream.events} == {0, 1}
 
 
+def test_device_change_mid_chunk_emits_incomplete_segment():
+    """Regression for S1: device_change uprostřed chunkovaného příkazu nesmí
+    tiše zahodit parent — musí se objevit incomplete_segment, aby UI ukázalo
+    že ten chunkovaný command nikdy nedostal odpověď."""
+    long_text = b'A' * 800   # no terminator → chunked
+    pkts = [
+        UsbPacket(1,'S','bulk',1,'OUT',1.0,0,len(long_text), long_text, False,'a.pcap',bus_id=1,device_address=4),
+        UsbPacket(2,'S','bulk',1,'OUT',1.01,0,4, b'ping\n', False,'a.pcap',bus_id=1,device_address=99),
+    ]
+    stream = build_flow_stream(pkts, AnalysisConfig())
+    classes = [e.event_class for e in stream.events]
+    assert 'incomplete_segment' in classes, f'expected incomplete_segment in {classes}'
+    assert 'device_change' in classes
+    # Sessions must split correctly.
+    assert len(stream.device_sessions) == 2
+
+
+def test_chunked_command_flags_recomputed_on_finalization():
+    """Regression for K2: po finalizaci chunku musí být `is_unexpected_command`,
+    `expected_at_run_seq`, `is_out_of_order` přepočteno na základě plného cmd
+    jména, ne oseknuté formy z prvního chunku."""
+    cfg = AnalysisConfig(
+        expected_command_sequence=['checked-secrets-certdev-write', 'ping'],
+    )
+    # First chunk: command name is truncated mid-token (`checked-secrets-cert`)
+    # so initial parse would yield an unknown cmd → is_unexpected=True.
+    chunk1 = b'checked-secrets-cert'
+    # Second chunk completes the line: full text = `checked-secrets-certdev-write 11111111\n`
+    chunk2 = b'dev-write 11111111\r\n'
+    pkts = [
+        UsbPacket(1,'S','bulk',1,'OUT',1.0,    0, len(chunk1), chunk1, False, 'a.pcap'),
+        UsbPacket(2,'S','bulk',1,'OUT',1.001,  0, len(chunk2), chunk2, False, 'a.pcap'),
+    ]
+    stream = build_flow_stream(pkts, cfg)
+    cmds = [e for e in stream.events if e.event_class == 'command']
+    assert len(cmds) == 1
+    parent = cmds[0]
+    assert parent.cmd_name == 'checked-secrets-certdev-write'
+    # The full cmd IS in the expected sequence, so these flags must reflect that.
+    assert parent.is_unexpected_command is False
+    assert parent.expected_at_run_seq == 0
+
+
+def test_chunked_dut_write_extracts_serial_after_finalization():
+    """Regression for K2: DUT serial extrakce musí proběhnout i u chunkovaného
+    `checked-otp-device-sn-write` příkazu (jednou až máme plné args[0])."""
+    chunk1 = b'checked-otp-device-sn-' + b'X' * 200
+    chunk2 = b'X' * 200 + b'\r\n'
+    # Build a command whose full text really IS the write-sn command.
+    full_cmd = b'checked-otp-device-sn-write DUT-CHUNKED-001 12345678\r\n'
+    pkts = [
+        UsbPacket(1,'S','bulk',1,'OUT',1.0,   0, 30, full_cmd[:30],         False, 'a.pcap',bus_id=1,device_address=4),
+        UsbPacket(2,'S','bulk',1,'OUT',1.001, 0, len(full_cmd) - 30, full_cmd[30:], False, 'a.pcap',bus_id=1,device_address=4),
+    ]
+    stream = build_flow_stream(pkts, AnalysisConfig())
+    assert stream.dut_serial_by_run.get(0) == 'DUT-CHUNKED-001'
+
+
 def test_dut_serial_is_extracted_from_write_command():
     """`checked-otp-device-sn-write <SN>` must populate the DUT serial. The
     `OK <tester_sn>` response must remain visible as the *tester* serial — it

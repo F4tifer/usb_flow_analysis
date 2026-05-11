@@ -37,7 +37,15 @@ HERE = Path(__file__).resolve().parent
 STATIC_DIR = HERE / "static"
 
 # Maximum upload size per file (bytes). Configurable via env var.
-MAX_UPLOAD_BYTES = int(os.environ.get("USB_ANALYSIS_MAX_UPLOAD_BYTES", str(512 * 1024 * 1024)))
+MAX_UPLOAD_BYTES = int(os.environ.get("USB_ANALYSIS_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024 * 1024)))
+# Maximum number of files per multi-upload call. Prevents accidental
+# directory-drag explosions; legitimate batch processing of ~10–30 PCAPs
+# fits comfortably under the default. Configurable via env var.
+MAX_UPLOAD_FILES = int(os.environ.get("USB_ANALYSIS_MAX_UPLOAD_FILES", "64"))
+# Aggregate cap across all files in one multi-upload (bytes). Defaults to
+# 8× per-file limit so 8 large files always fit; tune for your reverse-proxy
+# body-size limit if it's smaller.
+MAX_UPLOAD_TOTAL_BYTES = int(os.environ.get("USB_ANALYSIS_MAX_UPLOAD_TOTAL_BYTES", str(MAX_UPLOAD_BYTES * 8)))
 # Maximum number of cached flow analyses (LRU).
 FLOW_CACHE_MAX_ENTRIES = int(os.environ.get("USB_ANALYSIS_FLOW_CACHE_MAX", "16"))
 # Allowed character set for capture/device identifiers.
@@ -141,11 +149,20 @@ EMPTY_SUMMARY: dict[str, object] = {
 }
 
 
+# Contract string: the client looks for this substring in 404 bodies to trigger
+# its capture-lost recovery flow. Keep these in sync if you ever change the
+# wording. Tests assert the exact substring (see tests/test_web.py).
+CAPTURE_LOST_DETAIL_PREFIX = "Unknown capture id"
+
+
 def _resolve_capture_id(capture_id: str) -> Path:
     try:
         return CAPTURE_IDS[capture_id]
     except KeyError as e:
-        raise HTTPException(status_code=404, detail=f"Unknown capture id: {capture_id}") from e
+        raise HTTPException(
+            status_code=404,
+            detail=f"{CAPTURE_LOST_DETAIL_PREFIX}: {capture_id}",
+        ) from e
 
 
 def resolve_captures(path: str | None, capture_id: str | None, capture_ids: str | None) -> list[Path]:
@@ -782,8 +799,13 @@ def api_deep_rules(
     return {"offset": offset, "limit": limit, "returned": len(rows), "rows": rows}
 
 
-def _store_upload(file: UploadFile) -> Path:
-    """Stream upload to a temp file, enforcing MAX_UPLOAD_BYTES."""
+def _store_upload(file: UploadFile, *, max_bytes: int | None = None) -> Path:
+    """Stream upload to a temp file, enforcing the per-file size cap.
+
+    `max_bytes` lets the multi-upload endpoint enforce a tighter ceiling for
+    the *remaining* aggregate budget, so the last file in a batch can't blow
+    past `MAX_UPLOAD_TOTAL_BYTES`. Defaults to `MAX_UPLOAD_BYTES`."""
+    cap = MAX_UPLOAD_BYTES if max_bytes is None else min(MAX_UPLOAD_BYTES, max_bytes)
     fd, name = tempfile.mkstemp(prefix="usbpcap-", suffix=".pcap")
     os.close(fd)
     dest = Path(name)
@@ -795,10 +817,10 @@ def _store_upload(file: UploadFile) -> Path:
                 if not chunk:
                     break
                 written += len(chunk)
-                if written > MAX_UPLOAD_BYTES:
+                if written > cap:
                     raise HTTPException(
                         status_code=413,
-                        detail=f"Upload exceeds {MAX_UPLOAD_BYTES} bytes",
+                        detail=f"Upload exceeds {cap} bytes",
                     )
                 sink.write(chunk)
     except Exception:
@@ -824,11 +846,25 @@ async def api_upload(file: UploadFile = File(...)):
 
 @app.post("/api/upload-multi")
 async def api_upload_multi(files: list[UploadFile] = File(...)):
+    if len(files) > MAX_UPLOAD_FILES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Příliš mnoho souborů najednou: {len(files)} > limit {MAX_UPLOAD_FILES}",
+        )
     ids: list[str] = []
     names: list[str] = []
+    bytes_so_far = 0
     for file in files:
+        # Defensive aggregate-size guard: each file is also size-checked inside
+        # _store_upload (per-file MAX_UPLOAD_BYTES), but we additionally bail
+        # out as soon as the *combined* upload exceeds the configured ceiling.
+        if bytes_so_far >= MAX_UPLOAD_TOTAL_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Celková velikost uploadu překročena ({MAX_UPLOAD_TOTAL_BYTES} B)",
+            )
         try:
-            dest = _store_upload(file)
+            dest = _store_upload(file, max_bytes=MAX_UPLOAD_TOTAL_BYTES - bytes_so_far)
         except HTTPException:
             raise
         try:
@@ -841,6 +877,10 @@ async def api_upload_multi(files: list[UploadFile] = File(...)):
             CAPTURE_IDS[uid] = dest
         ids.append(uid)
         names.append(file.filename or uid)
+        try:
+            bytes_so_far += dest.stat().st_size
+        except OSError:
+            pass
     if not ids:
         raise HTTPException(status_code=400, detail="No valid LINUX USB MMAPPED captures in upload")
     with _state_lock:
@@ -861,6 +901,8 @@ def api_info():
         "platform": _sys.platform,
         "config": {
             "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "max_upload_files": MAX_UPLOAD_FILES,
+            "max_upload_total_bytes": MAX_UPLOAD_TOTAL_BYTES,
             "flow_cache_max_entries": FLOW_CACHE_MAX_ENTRIES,
             "state_dir": str(_STATE_DIR),
         },

@@ -93,11 +93,15 @@ export class FlowView {
     this.inner.style.height = `${this.total * ROW_HEIGHT}px`;
     this.stats.textContent = `zobrazeno ${this.events.length} / ${this.total}`;
 
-    if (fresh.length > 0) {
-      this.page = myPage + 1;
-    } else {
-      // Page was empty even though server claimed total > 0 — stop iterating
-      // so we don't loop forever.
+    // Always advance to the next page, even if `fresh` was empty: an empty
+    // batch is normally an indication that the requested page lay past the
+    // end of the filtered stream. The outer `fetchAll` loop uses the
+    // events-array delta to detect end-of-stream and stop, so we don't risk
+    // infinite paging here.
+    this.page = myPage + 1;
+    if (data.events == null || (data.events.length === 0 && this.events.length < this.total)) {
+      // Server claims more events exist but returned an empty page — protect
+      // against an infinite loop by clamping total to what we actually saw.
       this.total = this.events.length;
     }
   }

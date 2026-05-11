@@ -342,6 +342,12 @@
         <section class="tab-panel" data-panel="sessions" role="tabpanel">
           <div class="panel-toolbar">
             <button type="button" id="btnLoadSessions" class="btn-primary">Načíst sessions a runy</button>
+            <label class="inline-field sessions-search">
+              Hledat DUT SN <small class="muted">(case-sensitive)</small>
+              <input type="search" id="sessionsSearch" placeholder="část SN nebo /regex/ — rozlišuje velikost písmen" autocomplete="off" spellcheck="false"/>
+            </label>
+            <button type="button" id="btnSessionsClear" class="btn-ghost" title="Vymazat hledání">×</button>
+            <span class="muted" id="sessionsMatchInfo"></span>
           </div>
           <div class="card">
             <h3>USB sessions <small class="muted">(per bus/device)</small></h3>

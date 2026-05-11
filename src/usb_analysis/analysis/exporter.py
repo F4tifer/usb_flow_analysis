@@ -43,6 +43,8 @@ def export_csv(stream: FlowStream, path: str) -> None:
     cols = [
         'seq', 'ts', 'ts_relative_ms', 'delta_ms', 'direction', 'event_class',
         'cmd_name', 'outcome', 'severity', 'latency_ms', 'causal_hints',
+        'run_index', 'run_seq', 'paired_seq',
+        'is_chunked', 'chunk_count',
         'bus_id', 'device_address', 'device_session', 'device_serial',
         'source_file',
     ]
@@ -62,6 +64,11 @@ def export_csv(stream: FlowStream, path: str) -> None:
                 'severity': e.severity,
                 'latency_ms': '' if e.latency_ms is None else f'{e.latency_ms:.3f}',
                 'causal_hints': ' | '.join(e.causal_hints),
+                'run_index': e.run_index,
+                'run_seq': e.run_seq,
+                'paired_seq': '' if e.paired_seq is None else e.paired_seq,
+                'is_chunked': '1' if e.is_chunked else '0',
+                'chunk_count': e.chunk_count,
                 'bus_id': e.bus_id,
                 'device_address': e.device_address,
                 'device_session': e.device_session,

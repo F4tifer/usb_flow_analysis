@@ -222,6 +222,23 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
         if pkt_device != cur_device:
             prev_serial = tester_serial_by_device.get(cur_device)
             new_serial = tester_serial_by_device.get(pkt_device)
+            # If the previous device had an open chunked command (or any
+            # open segment), the response from the old device will never come
+            # — surface that as incomplete_segment so the parent command isn't
+            # silently truncated on the timeline.
+            if segment_open and cur_cmd is not None:
+                ie = emit(ts=p.ts, direction='INTERNAL', layer='meta',
+                          event_class='incomplete_segment',
+                          content=(
+                              f'Nedokončený segment ({cur_cmd.cmd_name}) — '
+                              + ('chunked, ' if cur_cmd.is_chunked else '')
+                              + 'změna zařízení'
+                          ),
+                          cmd_name=cur_cmd.cmd_name,
+                          severity='critical', outcome='incomplete',
+                          source_file=p.source_file)
+                cur_cmd.paired_seq = ie.seq
+                stats.incomplete_segments += 1
             device_session_index += 1
             cur_device = pkt_device
             # DUT serial belongs to the *current* programming run on the
@@ -330,6 +347,25 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                     crc_valid, _ = validate_crc(full_text)
                     cur_cmd.cmd_crc_expected = crc_expected
                     cur_cmd.cmd_crc_valid = crc_valid
+                    # Re-derive command-sequence flags now that the *full* cmd
+                    # name is known — the truncated first-chunk name would have
+                    # been parsed as an unknown / unexpected command otherwise.
+                    if cfg.expected_command_sequence:
+                        try:
+                            cur_cmd.expected_at_run_seq = cfg.expected_command_sequence.index(cmd)
+                        except ValueError:
+                            cur_cmd.expected_at_run_seq = None
+                        cur_cmd.is_unexpected_command = cur_cmd.expected_at_run_seq is None
+                        cur_cmd.is_out_of_order = (
+                            cur_cmd.expected_at_run_seq is not None
+                            and abs(cur_cmd.expected_at_run_seq - cur_cmd.run_seq) > 2
+                        )
+                    # DUT serial extraction also has to wait for the full cmd:
+                    # the truncated first chunk wouldn't match `device_sn_write_commands`.
+                    if cmd in cfg.device_sn_write_commands and args:
+                        cur_dut_serial = args[0]
+                        dut_serial_by_run[cur_cmd.run_index] = cur_dut_serial
+                        cur_cmd.device_serial = serial()
                     summary = full_text[:160] + ('…' if len(full_text) > 160 else '')
                     cur_cmd.content = f'{summary}  [chunked: {chunk_count + 1} pkts, {len(out_buf)} B]'
                     if crc_expected and crc is None:

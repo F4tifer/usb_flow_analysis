@@ -19,7 +19,13 @@ from usb_analysis.analysis.config import AnalysisConfig
 from usb_analysis.analysis.engine import analyze_path
 from usb_analysis.analysis.causal import enrich_causal
 from usb_analysis.analysis.detectors import detect_errors
-from usb_analysis.analysis.exporter import export_csv, export_html_report, export_json, export_junit_xml
+from usb_analysis.analysis.exporter import (
+    _json_default,
+    export_csv,
+    export_html_report,
+    export_json,
+    export_junit_xml,
+)
 from usb_analysis.analysis.flow_builder import build_flow_stream
 from usb_analysis.analysis.parser import iter_usb_packets
 from usb_analysis.models import event_type_char, transfer_type_name
@@ -39,6 +45,21 @@ def _hex_preview(blob: bytes, max_len: int = 24) -> str:
     if len(blob) > max_len:
         return slice_ + "…"
     return slice_
+
+
+def _clone_flow_stream(stream, events):
+    """Build a FlowStream with the filtered events but every other field
+    carried over. Forgetting `device_sessions` / `dut_serial_by_run` here used
+    to silently drop sessions and DUT mappings from CLI export output."""
+    return type(stream)(
+        events=events,
+        device_serial=stream.device_serial,
+        source_files=stream.source_files,
+        total_duration_s=stream.total_duration_s,
+        stats=stream.stats,
+        device_sessions=getattr(stream, "device_sessions", []),
+        dut_serial_by_run=getattr(stream, "dut_serial_by_run", {}),
+    )
 
 
 def _csv_safe_row(row: dict) -> dict:
@@ -339,28 +360,18 @@ def flow(
                         "events": [asdict(e) for e in events],
                     },
                     ensure_ascii=False,
-                    default=lambda o: o.hex() if isinstance(o, (bytes, bytearray)) else None,
+                    # Shared helper raises TypeError on unknown types — silent
+                    # `None` fallback used to mask future model additions.
+                    default=_json_default,
                 )
             )
         else:
-            clone = type(stream)(
-                events=events,
-                device_serial=stream.device_serial,
-                source_files=stream.source_files,
-                total_duration_s=stream.total_duration_s,
-                stats=stream.stats,
-            )
+            clone = _clone_flow_stream(stream, events)
             export_json(clone, str(target))
         return
     if fmt == "csv":
         target = out or Path("flow.csv")
-        clone = type(stream)(
-            events=events,
-            device_serial=stream.device_serial,
-            source_files=stream.source_files,
-            total_duration_s=stream.total_duration_s,
-            stats=stream.stats,
-        )
+        clone = _clone_flow_stream(stream, events)
         export_csv(clone, str(target))
         console.print(f"[green]CSV exported:[/green] {target}")
         return

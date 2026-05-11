@@ -1157,6 +1157,27 @@ tbody tr.sev-warning:hover { background: rgba(245, 158, 11, 0.13); }
   font-weight: 600;
 }
 
+.inline-field.sessions-search input {
+  min-width: 220px;
+}
+
+/* Highlight matching DUT SN substrings in Sessions / Runs tables. */
+.sessions-table mark,
+.runs-table mark {
+  background: rgba(245, 158, 11, 0.35);
+  color: #fde68a;
+  padding: 0 1px;
+  border-radius: 2px;
+  font-weight: 600;
+}
+
+#sessionsMatchInfo {
+  align-self: end;
+  margin-bottom: 0.4rem;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+}
+
 /* ============================================================
  * Export
  * ========================================================== */
@@ -1252,8 +1273,17 @@ tbody tr.sev-warning:hover { background: rgba(245, 158, 11, 0.13); }
   background: var(--accent-soft);
 }
 
+/* TOC anchors live inside .tab-content (the scrollable container). The
+ * help-toc card is `position: sticky; top: 0` and is roughly 90–120 px tall
+ * depending on viewport width. Without an explicit scroll-margin the
+ * anchor target would slide *under* the sticky TOC and the section heading
+ * be invisible. 120 px clears both the TOC and a small breathing gap. */
+.help-content [id^="help-"] {
+  scroll-margin-top: 120px;
+}
+
 .help-content .card {
-  scroll-margin-top: 1rem;
+  scroll-margin-top: 120px;
 }
 
 .help-content h4 {
