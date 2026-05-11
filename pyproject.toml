@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "usb-analysis"
-version = "2.2.0"
+version = "2.2.1"
 description = "Stream reader and analyzer for Linux USB mmap PCAP (usbmon) captures."
 readme = "README.md"
 requires-python = ">=3.11"
