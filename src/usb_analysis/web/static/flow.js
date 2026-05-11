@@ -22,6 +22,12 @@ export class FlowView {
     this.lastSelectedPairSeq = null;
     this.onSelectionChanged = null;
     this.onProgress = null;              // (loaded, total) → void; called during fetchAll
+    // (loaded, total) → string. Lets the host app supply a localised label
+    // for the small status row above the viewport. Defaults to English.
+    this.statsFormatter = ({ loaded, total }) => `shown ${loaded} / ${total}`;
+    // (string) → string. Translates server-side English content strings
+    // (event.content) into the active UI language. Identity by default.
+    this.contentLocalizer = (s) => s;
 
     // Generation counter so a slow fetch from a previous reload() can't
     // corrupt fresh state. Bumped by every reload().
@@ -91,7 +97,7 @@ export class FlowView {
     this.total = data.total || 0;
     this.events.push(...fresh);
     this.inner.style.height = `${this.total * ROW_HEIGHT}px`;
-    this.stats.textContent = `zobrazeno ${this.events.length} / ${this.total}`;
+    this.stats.textContent = this.statsFormatter({ loaded: this.events.length, total: this.total });
 
     // Always advance to the next page, even if `fresh` was empty: an empty
     // batch is normally an indication that the requested page lay past the
@@ -127,7 +133,8 @@ export class FlowView {
     if (this.lastSelectedPairSeq && e.seq === this.lastSelectedPairSeq) row.classList.add("paired");
     row.style.top = `${idx * ROW_HEIGHT}px`;
     const devTag = `b${e.bus_id ?? 0}/d${e.device_address ?? 0}${e.device_serial ? "|" + esc(e.device_serial) : ""}`;
-    row.innerHTML = `<span class="seq">${e.seq}</span> <span>${(e.delta_ms || 0).toFixed(1)}ms</span> <span class="direction ${this.dirClass(e)}">${esc(e.direction)}</span> <span class="dev-tag" title="bus/device${e.device_serial ? ' / serial' : ''}">${devTag}</span> <span>[${esc(e.event_class)}]</span> <span>${esc(e.content)}</span>`;
+    const localContent = this.contentLocalizer(e.content || "");
+    row.innerHTML = `<span class="seq">${e.seq}</span> <span>${(e.delta_ms || 0).toFixed(1)}ms</span> <span class="direction ${this.dirClass(e)}">${esc(e.direction)}</span> <span class="dev-tag" title="bus/device${e.device_serial ? ' / serial' : ''}">${devTag}</span> <span>[${esc(e.event_class)}]</span> <span>${esc(localContent)}</span>`;
     row.onclick = () => this.selectIndex(idx);
     return row;
   }

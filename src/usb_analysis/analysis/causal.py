@@ -44,23 +44,27 @@ def enrich_causal(stream: FlowStream, config: AnalysisConfig | None = None) -> F
 
         event.causal_window = [e.seq for e in window]
 
+        # Note on language: causal hints are emitted as canonical English here
+        # so any non-UI consumer (CLI, JSON export, CI report) sees stable
+        # strings. The web UI replaces them via `causal.<key>` translations
+        # (see web/static/i18n.js + app.js localizeCausalHint).
         if event.event_class in {'response_error', 'incomplete_segment'} and any(e.event_class == 'timeout' for e in window):
             t = _find(window, 'timeout')
             event.causal_hints.append(
-                f"Timeout na '{t.cmd_name or 'unknown'}' těsně před chybou mohl rozbít stav zařízení."
+                f"Timeout on '{t.cmd_name or 'unknown'}' just before the error may have corrupted device state."
             )
             event.causal_confidence.append('high')
         if event.event_class in {'response_error', 'timeout'} and any(e.event_class == 'usb_error' for e in window):
-            event.causal_hints.append('USB chyba předcházela problému, možné DN/DP selhání fyzické vrstvy.')
+            event.causal_hints.append('USB error preceded the problem — possible DN/DP physical-layer fault.')
             event.causal_confidence.append('medium')
         if event.event_class in {'response_error', 'timeout'} and any(e.event_class == 'incomplete_segment' for e in window):
-            event.causal_hints.append('Nedokončený segment před tímto bodem mohl způsobit dominový efekt.')
+            event.causal_hints.append('An incomplete segment earlier may have caused a domino effect.')
             event.causal_confidence.append('high')
         if event.event_class in {'response_error', 'timeout', 'incomplete_segment'} and any(e.event_class == 'reconnect' for e in window):
-            event.causal_hints.append('Reconnect předcházel problému, zařízení mohlo projít resetem.')
+            event.causal_hints.append('A reconnect preceded the problem — the device may have gone through a reset.')
             event.causal_confidence.append('high')
         if event.event_class == 'response_error' and any(e.event_class == 'response_error' for e in window):
-            event.causal_hints.append('Předchozí ERROR naznačuje řetězení chyb.')
+            event.causal_hints.append('Previous ERROR suggests an error chain.')
             event.causal_confidence.append('medium')
 
         if event.causal_hints:

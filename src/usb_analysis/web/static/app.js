@@ -1,6 +1,14 @@
 import { FlowView } from "/static/flow.js";
 import { FlowDetailPanel } from "/static/detail.js";
 import { FlowTimeline } from "/static/timeline.js";
+import {
+  applyTranslations,
+  getLanguage,
+  initI18n,
+  onLanguageChange,
+  setLanguage,
+  t,
+} from "/static/i18n.js";
 
 const q = (id) => document.getElementById(id);
 const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
@@ -177,8 +185,8 @@ function handleCaptureLost(failingCaptureId, failingCaptureIds) {
   state.captureIds = [];
   for (const k of Object.keys(state.loaded)) state.loaded[k] = false;
   q("pathBox").value = "";
-  setStatus("error", "Capture nedostupný — nahrajte znovu");
-  showToast("Server ztratil aktuální capture (pravděpodobně po restartu). Nahrajte PCAP znovu.", "warning");
+  setStatus("error", t("status.error"));
+  showToast(t("toast.capture_lost"), "warning");
   q("severitySummary").hidden = true;
   q("sessionsSection").hidden = true;
   q("overviewEmpty").hidden = false;
@@ -214,13 +222,13 @@ function armLoadingWatchdog() {
     const overlay = q("loadingOverlay");
     overlay.hidden = true;
     overlay.style.display = "none";
-    showToast("Načítání trvalo příliš dlouho. Zkontrolujte API/server logy.", "error");
+    showToast(t("loading.watchdog") || "Loading is taking too long. Check API / server logs.", "error");
   }, LOADING_WATCHDOG_MS);
 }
 
 function showLoading(title, detail) {
   loadingDepth += 1;
-  q("loadingTitle").textContent = title || "Načítám…";
+  q("loadingTitle").textContent = title || t("loading.default");
   q("loadingDetail").textContent = detail || "";
   const overlay = q("loadingOverlay");
   overlay.hidden = false;
@@ -273,10 +281,22 @@ function ensureFlowComponents() {
   timeline = new FlowTimeline("flowTimeline");
   detailPanel.setBaseQueryProvider(baseQuery);
   detailPanel.onJumpToSeq = (seq) => jumpToSeq(seq).catch(toastError);
+  detailPanel.contentLocalizer = localizeContent;
+  _updateDetailLabels();
+  onLanguageChange(_updateDetailLabels);
   // Live progress in the loading modal during full-stream fetch.
   flowView.onProgress = (loaded, total) => {
-    updateLoadingDetail(`${loaded.toLocaleString()} / ${total.toLocaleString()} eventů`);
+    updateLoadingDetail(t("loading.events_progress", {
+      loaded: loaded.toLocaleString(),
+      total: total.toLocaleString(),
+    }));
   };
+  // Localised "shown X / Y" label above the viewport.
+  flowView.statsFormatter = ({ loaded, total }) =>
+    t("flow.stats_format", { loaded: loaded.toLocaleString(), total: total.toLocaleString() });
+  // Translate the canonical English `event.content` strings produced by the
+  // analyzer into the current UI language.
+  flowView.contentLocalizer = localizeContent;
 
   timeline.onSelectBucket = (idx) => {
     const bucket = timeline.buckets[idx];
@@ -362,39 +382,38 @@ async function uploadFiles(files) {
   if (!list.length) return;
   const total = list.reduce((s, f) => s + (f.size || 0), 0);
   const sizeStr = total ? ` · ${(total / 1024 / 1024).toFixed(1)} MB` : "";
-  const detail = list.length === 1
-    ? `${list[0].name}${sizeStr}`
-    : `${list.length} souborů${sizeStr}`;
+  const fileLabel = list.length === 1 ? list[0].name : `${list.length} files`;
+  const detail = `${fileLabel}${sizeStr}`;
 
-  await withLoading("Nahrávám PCAP", async () => {
-    setStatus("loading", `Nahrávám ${list.length} soubor(ů)…`);
+  await withLoading(t("loading.uploading"), async () => {
+    setStatus("loading", t("status.uploading"));
     const fd = new FormData();
     if (list.length === 1) {
       fd.append("file", list[0]);
       const res = await fetch("/api/upload", { method: "POST", body: fd });
       if (!res.ok) {
-        setStatus("error", "Upload selhal");
+        setStatus("error", t("toast.upload_failed"));
         throw new Error(await res.text());
       }
       const data = await res.json();
       state.captureId = data.capture_id;
       state.captureIds = [];
-      setStatus("ready", data.filename || "capture nahrán");
+      setStatus("ready", data.filename || t("status.ready"));
     } else {
       for (const f of list) fd.append("files", f);
       const res = await fetch("/api/upload-multi", { method: "POST", body: fd });
       if (!res.ok) {
-        setStatus("error", "Upload selhal");
+        setStatus("error", t("toast.upload_failed"));
         throw new Error(await res.text());
       }
       const data = await res.json();
       state.captureIds = data.capture_ids || [];
       state.captureId = state.captureIds[0] ?? null;
-      setStatus("ready", `${state.captureIds.length} captures nahráno`);
+      setStatus("ready", t("toast.captures_uploaded", { n: state.captureIds.length }));
     }
     q("pathBox").value = "";
     invalidateLoaded();
-    updateLoadingDetail("Analyzuji obsah…");
+    updateLoadingDetail(t("loading.analyzing"));
     await loadCurrentTab();
   }, detail);
 }
@@ -422,21 +441,24 @@ async function loadCurrentTab() {
   await loadTab(active, { force: true });
 }
 
+// TAB_LOADERS use translation *keys* for the loading-overlay title/detail
+// so the displayed text follows the current language at the time the tab is
+// activated (not the time the table was built at module load).
 const TAB_LOADERS = {
   // Keep overview non-blocking so startup never gets trapped behind modal loading.
-  overview: { fn: loadOverview, title: "", detail: "" },
-  packets:  { fn: loadPackets,  title: "Načítám pakety",  detail: "" },
-  stream:   { fn: loadStream,   title: "Načítám stream",  detail: "ASCII překlad bulk komunikace" },
-  flow:     { fn: loadFlow,     title: "Analyzuji flow",  detail: "Build flow stream + causal + detectors" },
-  errors:   { fn: loadErrors,   title: "Načítám chyby",   detail: "" },
-  sessions: { fn: loadSessions, title: "Načítám sessions a runy", detail: "" },
+  overview: { fn: loadOverview, titleKey: "", detailKey: "" },
+  packets:  { fn: loadPackets,  titleKey: "loading.packets", detailKey: "" },
+  stream:   { fn: loadStream,   titleKey: "loading.stream",  detailKey: "loading.stream_detail" },
+  flow:     { fn: loadFlow,     titleKey: "loading.flow_title", detailKey: "loading.flow_detail" },
+  errors:   { fn: loadErrors,   titleKey: "loading.errors",  detailKey: "" },
+  sessions: { fn: loadSessions, titleKey: "loading.sessions", detailKey: "" },
   // Deep is deliberately not auto-run on tab switch — segmentation + scoring +
-  // rule mining is heavy. User must click "Spustit hloubkovou analýzu". We
+  // rule mining is heavy. User must click the "Run deep analysis" button. We
   // still register a no-op loader so loadTab() doesn't silently mark it loaded.
-  deep:     { fn: () => {}, title: "", detail: "" },
-  export:   { fn: () => { setupExport(); }, title: "", detail: "" },
+  deep:     { fn: () => {}, titleKey: "", detailKey: "" },
+  export:   { fn: () => { setupExport(); }, titleKey: "", detailKey: "" },
   // Help is static HTML, doesn't need a capture or any fetch.
-  help:     { fn: () => {}, title: "", detail: "" },
+  help:     { fn: () => {}, titleKey: "", detailKey: "" },
 };
 
 async function loadTab(name, { force = false } = {}) {
@@ -448,8 +470,10 @@ async function loadTab(name, { force = false } = {}) {
     return;
   }
   try {
-    if (loader.title) {
-      await withLoading(loader.title, () => loader.fn(), loader.detail);
+    if (loader.titleKey) {
+      const title = t(loader.titleKey);
+      const detail = loader.detailKey ? t(loader.detailKey) : "";
+      await withLoading(title, () => loader.fn(), detail);
     } else {
       await loader.fn();
     }
@@ -574,7 +598,7 @@ async function loadOverviewDerivedMetrics() {
     failed = true;
   }
 
-  if (failed) showToast("Některé metriky se nepodařilo načíst — viz konzole.", "warning");
+  if (failed) showToast(t("toast.partial_metrics"), "warning");
 }
 
 function renderDist(obj) {
@@ -599,19 +623,19 @@ function renderSidebarSessions(sessions) {
     return;
   }
   wrap.hidden = false;
-  list.innerHTML = sessions.map((s) => {
+  const dutLabelOf = (s) => {
     const dutCount = (s.dut_serials || []).length;
-    const dutLabel = dutCount === 0 ? "—"
-      : dutCount === 1 ? escapeHtml(s.dut_serials[0])
-      : `${dutCount} DUTs`;
-    return `
+    if (dutCount === 0) return t("sessions.pill_no_dut");
+    if (dutCount === 1) return escapeHtml(s.dut_serials[0]);
+    return t("sessions.pill_many_duts", { n: dutCount });
+  };
+  list.innerHTML = sessions.map((s) => `
       <div class="session-pill" data-seq="${s.start_seq}">
-        <div><span class="session-id">#${s.session_index}</span> bus ${s.bus_id}/dev ${s.device_address}</div>
-        <div class="session-meta">DUT: ${dutLabel} · tester: ${escapeHtml(s.tester_serial || "?")}</div>
-        <div class="session-meta">seq ${s.start_seq}–${s.end_seq} · ${s.event_count} eventů</div>
+        <div><span class="session-id">#${s.session_index}</span> ${escapeHtml(t("sidebar.bus"))} ${s.bus_id}/${escapeHtml(t("sidebar.device"))} ${s.device_address}</div>
+        <div class="session-meta">${escapeHtml(t("sessions.pill_dut"))}: ${dutLabelOf(s)} · ${escapeHtml(t("sessions.pill_tester"))}: ${escapeHtml(s.tester_serial || "?")}</div>
+        <div class="session-meta">seq ${s.start_seq}–${s.end_seq} · ${s.event_count} ${escapeHtml(t("sessions.pill_events"))}</div>
       </div>
-    `;
-  }).join("");
+    `).join("");
   $$(".session-pill", list).forEach((el) => {
     el.onclick = () => jumpToSeq(parseInt(el.dataset.seq, 10)).catch(toastError);
   });
@@ -695,19 +719,24 @@ async function loadErrors() {
   const rows = data.rows || [];
   const body = q("errorsBody");
   body.innerHTML = "";
-  q("errorsEmpty").textContent = rows.length ? "" : "Žádné chyby pro zvolené filtry.";
+  q("errorsEmpty").textContent = rows.length ? "" : t("errors.no_match");
   for (const e of rows) {
     const tr = document.createElement("tr");
     tr.className = `sev-${e.severity}`;
     const seq = e.linked_flow_events?.[0] ?? "";
+    // Detector description is canonical-EN ("Latency 32ms on …", "Missing CRC on …");
+    // causal hints likewise. Functions return the raw text on no-match so
+    // chaining is safe.
+    const desc = localizeContent(localizeDetectorDesc(e.description || ""));
+    const hints = (e.causal_hints || []).map((h) => escapeHtml(localizeContent(h))).join("<br/>");
     tr.innerHTML = `
       <td>${seq}</td>
       <td>${e.layer}</td>
       <td>${e.severity}</td>
       <td>${e.event_type}</td>
-      <td>${escapeHtml(e.description)}</td>
+      <td>${escapeHtml(desc)}</td>
       <td>${fmtTs(e.ts)}</td>
-      <td>${(e.causal_hints || []).map(escapeHtml).join("<br/>")}</td>
+      <td>${hints}</td>
     `;
     if (Number.isFinite(seq)) {
       tr.onclick = () => jumpToSeq(seq).catch(toastError);
@@ -833,7 +862,7 @@ function applySessionsFilter() {
     sBody.append(tr);
   }
   if (!matchedSessions.length) {
-    sBody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:1rem">Žádná session neobsahuje hledaný DUT SN.</td></tr>`;
+    sBody.innerHTML = `<tr><td colspan="10" class="muted" style="text-align:center;padding:1rem">${escapeHtml(t("sessions.empty_sessions"))}</td></tr>`;
   }
 
   // Render Runs
@@ -855,28 +884,119 @@ function applySessionsFilter() {
     rBody.append(tr);
   }
   if (!matchedRuns.length) {
-    rBody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:1rem">Žádný run neobsahuje hledaný DUT SN.</td></tr>`;
+    rBody.innerHTML = `<tr><td colspan="8" class="muted" style="text-align:center;padding:1rem">${escapeHtml(t("sessions.empty_runs"))}</td></tr>`;
   }
 
   // Match info
   const info = q("sessionsMatchInfo");
   if (matcher.empty) {
-    info.textContent = `${_sessionsData.length} sessions · ${_runsData.length} runů`;
+    info.textContent = t("sessions.count_format_empty", {
+      sessions: _sessionsData.length,
+      runs: _runsData.length,
+    });
   } else {
-    info.textContent =
-      `${matchedSessions.length}/${_sessionsData.length} sessions · ` +
-      `${matchedRuns.length}/${_runsData.length} runů odpovídá`;
+    info.textContent = t("sessions.count_format_match", {
+      ms: matchedSessions.length,
+      ts: _sessionsData.length,
+      mr: matchedRuns.length,
+      tr: _runsData.length,
+    });
   }
 }
 
 // ============================================================
 // Deep
 // ============================================================
-async function loadDeep() {
-  if (!hasCapture()) return showToast("Nahrajte PCAP nejdřív.", "warning");
+// Canonical → localised translator for server-side strings that contain
+// variable parts (cmd names, byte counts, …). The patterns must match the
+// strings produced by flow_builder.py / causal.py / detectors.py exactly,
+// so updating those files requires updating this function too.
+function localizeContent(raw) {
+  if (!raw) return raw;
+  // 1. Causal hints — fixed prefixes that may be embedded in event.content
+  //    (timeline meta rows) or stand alone in causal_hints array.
+  let m;
+  m = raw.match(/^Timeout on '([^']+)' just before the error may have corrupted device state\.$/);
+  if (m) return t("causal.timeout_before_error", { cmd: m[1] });
+  if (raw === "USB error preceded the problem — possible DN/DP physical-layer fault.")
+    return t("causal.usb_error_before");
+  if (raw === "An incomplete segment earlier may have caused a domino effect.")
+    return t("causal.incomplete_segment_before");
+  if (raw === "A reconnect preceded the problem — the device may have gone through a reset.")
+    return t("causal.reconnect_before");
+  if (raw === "Previous ERROR suggests an error chain.")
+    return t("causal.error_chain");
 
-  await withLoading("Hluboká analýza", async () => {
-    setStatus("loading", "Spouštím hloubkovou analýzu…");
+  // 2. Flow event content
+  m = raw.match(/^Incomplete segment \(([^)]+)\) — chunked, device change$/);
+  if (m) return t("content.incomplete_chunked_device_change", { cmd: m[1] });
+  m = raw.match(/^Incomplete segment \(([^)]+)\) — device change$/);
+  if (m) return t("content.incomplete_device_change", { cmd: m[1] });
+  m = raw.match(/^Incomplete segment after (.+)$/);
+  if (m) return t("content.incomplete_after", { cmd: m[1] });
+  m = raw.match(/^New command before previous was closed: (.+)$/);
+  if (m) return t("content.incomplete_new_cmd", { cmd: m[1] });
+  m = raw.match(/^Device change: bus (\d+)\/dev (\d+) \(tester (\S+)\) — previous tester: (\S+)$/);
+  if (m) return t("content.device_change_full", { bus: m[1], dev: m[2], tester: m[3], prev: m[4] });
+  m = raw.match(/^Device change: bus (\d+)\/dev (\d+) \(tester (\S+)\)$/);
+  if (m) return t("content.device_change_new_only", { bus: m[1], dev: m[2], tester: m[3] });
+  m = raw.match(/^Device change: bus (\d+)\/dev (\d+) — previous tester: (\S+)$/);
+  if (m) return t("content.device_change_prev_only", { bus: m[1], dev: m[2], prev: m[3] });
+  m = raw.match(/^Device change: bus (\d+)\/dev (\d+)$/);
+  if (m) return t("content.device_change_bare", { bus: m[1], dev: m[2] });
+  m = raw.match(/^URB (\S+) submit without complete$/);
+  if (m) return t("content.urb_no_complete", { urb: m[1] });
+  m = raw.match(/^Timeout ([\d.]+)ms on (.+)$/);
+  if (m) return t("content.timeout_on", { ms: m[1], cmd: m[2] });
+  if (raw === "Reconnect after a longer gap")
+    return t("content.reconnect_after_gap");
+  // Chunked-awaiting suffix appears tail of `display_content`. Replace inline.
+  if (raw.endsWith("[chunked, awaiting…]")) {
+    return raw.slice(0, -"[chunked, awaiting…]".length) + t("content.chunked_awaiting_suffix");
+  }
+  return raw;
+}
+
+// Detector ErrorEvent.description — server emits English.
+function localizeDetectorDesc(raw) {
+  if (!raw) return raw;
+  if (raw === "Device reconnect") return t("detector.device_reconnect");
+  let m;
+  m = raw.match(/^Missing CRC on (.+)$/);
+  if (m) return t("detector.missing_crc", { cmd: m[1] });
+  m = raw.match(/^CRC mismatch on (.+)$/);
+  if (m) return t("detector.crc_mismatch", { cmd: m[1] });
+  m = raw.match(/^Latency ([\d.]+)ms on (.+)$/);
+  if (m) return t("detector.timing", { ms: m[1], cmd: m[2] });
+  m = raw.match(/^Suspiciously low latency ([\d.]+)ms on (.+)$/);
+  if (m) return t("detector.timing_low", { ms: m[1], cmd: m[2] });
+  // ERROR / status / app_error etc. pass through — they're protocol-level text
+  // that should stay verbatim (`ERROR invalid-crc "..."`, `USB status=...`).
+  return raw;
+}
+
+// Map a canonical English anomaly-finding reason (emitted by scorer.py) to a
+// localised string. Returns the original text when no translation matches.
+function localizeReason(raw) {
+  if (!raw) return "";
+  if (raw === "unknown command for baseline") return t("reason.unknown_command");
+  if (raw === "unusual run position") return t("reason.unusual_run_position");
+  if (raw === "response line count spike") return t("reason.response_line_count_spike");
+  if (raw === "high anomaly score") return t("reason.high_anomaly");
+  if (raw.startsWith("unexpected outcome")) {
+    const tail = raw.slice("unexpected outcome".length).trim();
+    return t("reason.unexpected_outcome") + (tail ? " " + tail : "");
+  }
+  const m = raw.match(/^latency spike \(([^)]+)\)$/);
+  if (m) return t("reason.latency_spike", { mad: m[1] });
+  return raw;
+}
+
+async function loadDeep() {
+  if (!hasCapture()) return showToast(t("toast.upload_no_pcap"), "warning");
+
+  await withLoading(t("loading.deep"), async () => {
+    setStatus("loading", t("status.deep_running"));
     try {
       const path = q("pathBox").value.trim();
       const baseQ = qs({
@@ -884,7 +1004,7 @@ async function loadDeep() {
         capture_id: state.captureId ?? undefined,
         capture_ids: state.captureIds.length ? state.captureIds.join(",") : undefined,
       });
-      updateLoadingDetail("Segmentace + scoring + mining pravidel");
+      updateLoadingDetail(t("loading.deep_progress"));
       const [summary, findings, rules] = await Promise.all([
         fetchJson("/api/deep/summary" + baseQ),
         fetchJson("/api/deep/findings" + baseQ + "&limit=50"),
@@ -902,7 +1022,7 @@ async function loadDeep() {
           <td>${f.segment?.outcome || ""}</td>
           <td>${f.segment?.run_index ?? ""}</td>
           <td>${f.segment?.latency_ms?.toFixed?.(1) ?? ""} ms</td>
-          <td>${(f.reasons || []).join(", ")}</td>
+          <td>${escapeHtml((f.reasons || []).map(localizeReason).join(", "))}</td>
         `;
         fBody.append(tr);
       }
@@ -910,23 +1030,31 @@ async function loadDeep() {
       rBody.innerHTML = "";
       for (const r of rules.rows || []) {
         const tr = document.createElement("tr");
+        const ruleKey = `rule.${r.rule_id}`;
+        // Server sends canonical EN description; UI replaces via `rule.<id>`
+        // lookup. Missing keys fall through to the server text.
+        const ruleDesc = t(ruleKey);
+        const description = ruleDesc !== ruleKey ? ruleDesc : (r.description || "");
+        const actionKey = `action.${r.suggested_action}`;
+        const actionLocal = t(actionKey);
+        const action = actionLocal !== actionKey ? actionLocal : (r.suggested_action || "");
         tr.innerHTML = `
-          <td>${r.rule_id}</td>
+          <td>${escapeHtml(r.rule_id)}</td>
           <td>${(r.confidence || 0).toFixed(2)}</td>
           <td>${r.support}</td>
-          <td>${escapeHtml(r.description || "")}</td>
-          <td>${escapeHtml(r.suggested_action || "")}</td>
+          <td>${escapeHtml(description)}</td>
+          <td>${escapeHtml(action)}</td>
         `;
         rBody.append(tr);
       }
       // Intentionally don't lock `state.loaded.deep` — user may want to re-run
       // after changing filters or upload, so each button click should re-fetch.
-      setStatus("ready", "Deep analýza hotová");
+      setStatus("ready", t("status.deep_done"));
     } catch (err) {
-      setStatus("error", "Deep selhala");
+      setStatus("error", t("status.deep_failed"));
       throw err;
     }
-  }, "(může chvíli trvat)");
+  }, t("loading.deep_detail"));
 }
 
 // ============================================================
@@ -993,7 +1121,7 @@ function wireFilters() {
     state.captureId = null;
     state.captureIds = [];
     invalidateLoaded();
-    setStatus("ready", "Použita lokální cesta");
+    setStatus("ready", t("toast.using_path"));
     loadCurrentTab().catch(toastError);
   });
   q("btnApplyFilters").addEventListener("click", () => {
@@ -1036,7 +1164,7 @@ function wireFlow() {
     const term = q("flowSearch").value.trim();
     ensureFlowComponents();
     if (!term) return loadFlow().catch(toastError);
-    await withLoading(`Hledám "${term}"`, async () => {
+    await withLoading(t("loading.search", { term }), async () => {
       const data = await fetchJson(`/api/flow/search${baseQuery()}&q=${encodeURIComponent(term)}&limit=1000`);
       flowView.events = data.rows || [];
       flowView.total = flowView.events.length;
@@ -1063,7 +1191,7 @@ function wireFlow() {
     const raw = q("flowJumpSeq").value.trim();
     const seq = Number.parseInt(raw, 10);
     if (!Number.isFinite(seq) || seq < 1) {
-      showToast("Zadej platné seq číslo (kladné celé)", "warning");
+      showToast(t("toast.invalid_seq"), "warning");
       return;
     }
     ensureFlowComponents();
@@ -1071,10 +1199,10 @@ function wireFlow() {
       // Make sure flow data is loaded before searching for the seq.
       await loadFlow();
     }
-    await withLoading(`Skok na seq #${seq}`, async () => {
+    await withLoading(t("loading.jump", { seq }), async () => {
       await jumpToSeq(seq);
       const found = flowView.events.find((e) => e.seq === seq);
-      if (!found) showToast(`Seq #${seq} mimo aktuální filtr/rozsah`, "warning");
+      if (!found) showToast(t("toast.seq_not_in_filter", { seq }), "warning");
     });
   };
   q("btnFlowJump").addEventListener("click", () => doJump().catch(toastError));
@@ -1133,7 +1261,7 @@ function fmtBytes(n) {
 async function showAbout() {
   const overlay = q("aboutOverlay");
   const body = q("aboutBody");
-  body.innerHTML = `<div class="muted">Načítám…</div>`;
+  body.innerHTML = `<div class="muted">${escapeHtml(t("about.loading"))}</div>`;
   overlay.hidden = false;
 
   try {
@@ -1147,34 +1275,34 @@ async function showAbout() {
       <p class="about-description">${escapeHtml(info.description || "")}</p>
 
       <div class="about-section">
-        <h3>Prostředí</h3>
+        <h3>${escapeHtml(t("about.environment"))}</h3>
         <dl class="about-grid">
-          <dt>Python</dt><dd>${escapeHtml(info.python || "?")}</dd>
-          <dt>Platforma</dt><dd>${escapeHtml(info.platform || "?")}</dd>
+          <dt>${escapeHtml(t("about.python"))}</dt><dd>${escapeHtml(info.python || "?")}</dd>
+          <dt>${escapeHtml(t("about.platform"))}</dt><dd>${escapeHtml(info.platform || "?")}</dd>
         </dl>
       </div>
 
       <div class="about-section">
-        <h3>Limity uploadu</h3>
+        <h3>${escapeHtml(t("about.upload_limits"))}</h3>
         <dl class="about-grid">
-          <dt>Per soubor</dt><dd>${fmtBytes(cfg.max_upload_bytes)}</dd>
-          <dt>Souborů najednou</dt><dd>${cfg.max_upload_files ?? "?"}</dd>
-          <dt>Celkem najednou</dt><dd>${fmtBytes(cfg.max_upload_total_bytes)}</dd>
-          <dt>Flow cache</dt><dd>${cfg.flow_cache_max_entries ?? "?"} záznamů (LRU)</dd>
-          <dt>State dir</dt><dd>${escapeHtml(cfg.state_dir || "?")}</dd>
+          <dt>${escapeHtml(t("about.per_file"))}</dt><dd>${fmtBytes(cfg.max_upload_bytes)}</dd>
+          <dt>${escapeHtml(t("about.files_at_once"))}</dt><dd>${cfg.max_upload_files ?? "?"}</dd>
+          <dt>${escapeHtml(t("about.total_at_once"))}</dt><dd>${fmtBytes(cfg.max_upload_total_bytes)}</dd>
+          <dt>${escapeHtml(t("about.flow_cache"))}</dt><dd>${cfg.flow_cache_max_entries ?? "?"} ${escapeHtml(t("about.flow_cache_unit"))}</dd>
+          <dt>${escapeHtml(t("about.state_dir"))}</dt><dd>${escapeHtml(cfg.state_dir || "?")}</dd>
         </dl>
       </div>
 
       <div class="about-section">
-        <h3>Aktuální stav</h3>
+        <h3>${escapeHtml(t("about.runtime"))}</h3>
         <dl class="about-grid">
-          <dt>Captures v paměti</dt><dd>${rt.captures_loaded ?? 0}</dd>
-          <dt>Cachované flow</dt><dd>${rt.flow_cache_size ?? 0}</dd>
+          <dt>${escapeHtml(t("about.captures_loaded"))}</dt><dd>${rt.captures_loaded ?? 0}</dd>
+          <dt>${escapeHtml(t("about.flow_cache_size"))}</dt><dd>${rt.flow_cache_size ?? 0}</dd>
         </dl>
       </div>
     `;
   } catch (err) {
-    body.innerHTML = `<div class="muted">Nepodařilo se načíst info: ${escapeHtml(err.message)}</div>`;
+    body.innerHTML = `<div class="muted">${escapeHtml(t("about.load_failed", { msg: err.message }))}</div>`;
   }
 }
 
@@ -1228,10 +1356,78 @@ function wireKeyboard() {
   });
 }
 
+function _updateDetailLabels() {
+  if (!detailPanel) return;
+  detailPanel.labels = {
+    loading: t("flow.causal_loading"),
+    error: t("flow.causal_error"),
+    empty: t("flow.causal_empty"),
+  };
+}
+
+function _updateLangSwitchUI() {
+  const cur = getLanguage();
+  for (const btn of $$(".lang-option")) {
+    btn.classList.toggle("active", btn.dataset.lang === cur);
+    btn.setAttribute("aria-pressed", btn.dataset.lang === cur ? "true" : "false");
+  }
+}
+
+function wireLanguage() {
+  for (const btn of $$(".lang-option")) {
+    btn.addEventListener("click", () => {
+      const lang = btn.dataset.lang;
+      setLanguage(lang);
+    });
+  }
+  _updateLangSwitchUI();
+  // After every language switch: re-render anything that doesn't live in
+  // [data-i18n] attributes (sidebar session pills, flow stats, sessions
+  // match counter, capture-status text, deep tables — those are rebuilt
+  // when the relevant data is re-fetched, so we also refresh the status text
+  // explicitly here).
+  onLanguageChange(() => {
+    _updateLangSwitchUI();
+    // Capture-status text is set imperatively in JS — re-apply it via the
+    // last-known status kind. We track it on the element itself.
+    const dot = q("captureStatus").querySelector(".status-dot");
+    const txt = q("captureStatus").querySelector(".status-text");
+    const kindClass = [...dot.classList].find((c) => c.startsWith("status-") && c !== "status-dot");
+    const kind = kindClass ? kindClass.slice("status-".length) : "empty";
+    const statusKey = {
+      empty: "status.empty",
+      loading: "status.loading",
+      ready: "status.ready",
+      error: "status.error",
+    }[kind];
+    if (statusKey) txt.textContent = t(statusKey);
+    // Re-render sessions sidebar if data is loaded.
+    if (_sessionsData.length) renderSidebarSessions(_sessionsData);
+    if (_sessionsData.length || _runsData.length) applySessionsFilter();
+    // Re-render flow stats label + viewport rows if loaded.
+    if (flowView && flowView.events.length) {
+      flowView.stats.textContent = flowView.statsFormatter({
+        loaded: flowView.events.length,
+        total: flowView.total,
+      });
+      // Drop active row DOM so renderVirtual rebuilds them with the new
+      // contentLocalizer. inner.innerHTML cleared, active map cleared.
+      flowView.active.clear();
+      flowView.inner.innerHTML = "";
+      flowView.renderVirtual();
+      // Refresh detail JSON (active selection) — its content is JSON-stringified
+      // and may include localised fields next time user clicks. The static
+      // JSON dump itself is server-generated raw event so it intentionally
+      // stays in English (acts as machine-readable detail).
+    }
+  });
+}
+
 // ============================================================
 // Boot
 // ============================================================
 function boot() {
+  initI18n();
   wireUpload();
   wireTabs();
   wireFilters();
@@ -1242,8 +1438,9 @@ function boot() {
   wireSessions();
   wireDeep();
   wireAbout();
+  wireLanguage();
   wireKeyboard();
-  setStatus("empty", "Žádný capture nenahrán");
+  setStatus("empty", t("status.empty"));
 }
 
 window.addEventListener("unhandledrejection", () => {

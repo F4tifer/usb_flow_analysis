@@ -1391,6 +1391,48 @@ tbody tr.sev-warning:hover { background: rgba(245, 158, 11, 0.13); }
 }
 
 /* ============================================================
+ * Language switcher (header, far right)
+ * ========================================================== */
+.lang-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  margin-left: 0.5rem;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--r-sm);
+  padding: 0.1rem 0.25rem;
+}
+
+.lang-option {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.45rem;
+  border-radius: 3px;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+}
+
+.lang-option:hover {
+  color: var(--fg-default);
+}
+
+.lang-option.active {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+.lang-divider {
+  color: var(--border-default);
+  font-size: 0.74rem;
+  user-select: none;
+}
+
+/* ============================================================
  * Brand button (clickable in header → opens About modal)
  * ========================================================== */
 .brand-button {

@@ -39,15 +39,15 @@ def detect_errors(stream: FlowStream, cfg: AnalysisConfig | None = None) -> list
         elif e.event_class == 'lost_urb':
             out.append(ErrorEvent('transport', 'warning', 'usb_lost_urb', e.content, e.ts, {}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'reconnect':
-            out.append(ErrorEvent('connection', 'info', 'device_reconnect', 'Detekován reconnect', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
+            out.append(ErrorEvent('connection', 'info', 'device_reconnect', 'Device reconnect', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'timeout':
             out.append(ErrorEvent('protocol', 'critical', 'segment_timeout', e.content, e.ts, {'hypothesis': e.timeout_source_hypothesis}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'incomplete_segment':
             out.append(ErrorEvent('protocol', 'critical', 'incomplete_segment', e.content, e.ts, {}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'command' and e.cmd_crc_expected and e.cmd_crc is None:
-            out.append(ErrorEvent('protocol', 'critical', 'missing_crc', f'Chybí CRC u {e.cmd_name}', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
+            out.append(ErrorEvent('protocol', 'critical', 'missing_crc', f'Missing CRC on {e.cmd_name}', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'command' and e.cmd_crc_valid is False:
-            out.append(ErrorEvent('protocol', 'critical', 'crc_mismatch', f'CRC mismatch u {e.cmd_name}', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
+            out.append(ErrorEvent('protocol', 'critical', 'crc_mismatch', f'CRC mismatch on {e.cmd_name}', e.ts, {}, [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'response_error':
             out.append(ErrorEvent('application', 'critical', 'app_error', e.content, e.ts, {'cmd_name': e.cmd_name}, [e.seq, e.paired_seq] if e.paired_seq else [e.seq], e.causal_hints, e.source_file))
         elif e.event_class == 'response_ok' and e.outcome == 'ok_no':
@@ -74,11 +74,11 @@ def detect_errors(stream: FlowStream, cfg: AnalysisConfig | None = None) -> list
         if e.cmd_name in med_mad and e.latency_ms is not None:
             med, mad, mn = med_mad[e.cmd_name]
             if e.latency_ms > med + cfg.timing_critical_multiplier * mad:
-                out.append(ErrorEvent('timing', 'critical', 'timing_critical', f'Latency {e.latency_ms:.1f}ms u {e.cmd_name}', e.ts, {'median': med, 'mad': mad}, [e.seq], e.causal_hints, e.source_file))
+                out.append(ErrorEvent('timing', 'critical', 'timing_critical', f'Latency {e.latency_ms:.1f}ms on {e.cmd_name}', e.ts, {'median': med, 'mad': mad}, [e.seq], e.causal_hints, e.source_file))
             elif e.latency_ms > med + cfg.timing_mad_multiplier * mad:
-                out.append(ErrorEvent('timing', 'warning', 'timing_high', f'Latency {e.latency_ms:.1f}ms u {e.cmd_name}', e.ts, {'median': med, 'mad': mad}, [e.seq], e.causal_hints, e.source_file))
+                out.append(ErrorEvent('timing', 'warning', 'timing_high', f'Latency {e.latency_ms:.1f}ms on {e.cmd_name}', e.ts, {'median': med, 'mad': mad}, [e.seq], e.causal_hints, e.source_file))
             elif e.latency_ms < mn * cfg.timing_suspiciously_low_ratio:
-                out.append(ErrorEvent('timing', 'warning', 'timing_suspiciously_low', f'Podezřele nízká latency {e.latency_ms:.1f}ms u {e.cmd_name}', e.ts, {'min': mn}, [e.seq], e.causal_hints, e.source_file))
+                out.append(ErrorEvent('timing', 'warning', 'timing_suspiciously_low', f'Suspiciously low latency {e.latency_ms:.1f}ms on {e.cmd_name}', e.ts, {'min': mn}, [e.seq], e.causal_hints, e.source_file))
 
     return out
 

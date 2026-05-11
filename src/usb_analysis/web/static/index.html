@@ -8,79 +8,84 @@
 </head>
 <body>
   <header class="app-header">
-    <button type="button" class="brand brand-button" id="brandButton" title="O aplikaci">
+    <button type="button" class="brand brand-button" id="brandButton" data-i18n-title="app.about_tooltip" title="O aplikaci">
       <span class="brand-mark">USB</span>
       <span class="brand-title">Analysis</span>
       <span class="brand-info-icon" aria-hidden="true">i</span>
     </button>
     <div class="capture-status" id="captureStatus">
       <span class="status-dot status-empty"></span>
-      <span class="status-text">Žádný capture nenahrán</span>
+      <span class="status-text" data-i18n="status.empty">Žádný capture nenahrán</span>
     </div>
     <div class="severity-summary" id="severitySummary" hidden>
-      <span class="badge badge-critical" id="badgeCritical" title="Critical events">0</span>
-      <span class="badge badge-warning" id="badgeWarning" title="Warning events">0</span>
-      <span class="badge badge-info" id="badgeInfo" title="Info events">0</span>
+      <span class="badge badge-critical" id="badgeCritical" data-i18n-title="badge.critical_title" title="Critical events">0</span>
+      <span class="badge badge-warning" id="badgeWarning" data-i18n-title="badge.warning_title" title="Warning events">0</span>
+      <span class="badge badge-info" id="badgeInfo" data-i18n-title="badge.info_title" title="Info events">0</span>
+    </div>
+    <div class="lang-switch" role="group" data-i18n-aria-label="app.lang_switch_tooltip" aria-label="Přepnout jazyk">
+      <button type="button" class="lang-option" id="langCs" data-lang="cs" title="Čeština">CS</button>
+      <span class="lang-divider" aria-hidden="true">|</span>
+      <button type="button" class="lang-option" id="langEn" data-lang="en" title="English">EN</button>
     </div>
   </header>
 
   <div class="app-layout">
     <aside class="sidebar">
       <section class="sidebar-section">
-        <h2>Zdroj</h2>
+        <h2 data-i18n="sidebar.source">Zdroj</h2>
         <div class="upload-zone" id="uploadZone">
           <input type="file" id="upload" multiple
                  accept=".pcap,.pcapng,.cap,.pcap00,.pcap01,.pcap02,.pcap03,.pcap04,.pcap05,.pcap06,.pcap07,.pcap08,.pcap09"
                  hidden/>
           <label for="upload" class="upload-button">
             <span class="upload-icon">⬆</span>
-            <span>Nahrát PCAP soubory</span>
-            <span class="upload-hint">nebo přetáhni sem</span>
+            <span data-i18n="sidebar.upload_button">Nahrát PCAP soubory</span>
+            <span class="upload-hint" data-i18n="sidebar.upload_hint">nebo přetáhni sem</span>
           </label>
         </div>
         <details class="path-input">
-          <summary>Lokální cesta na serveru</summary>
+          <summary data-i18n="sidebar.path_summary">Lokální cesta na serveru</summary>
           <div class="form-row">
-            <input type="text" id="pathBox" placeholder="/cesta/trace.pcap00"/>
-            <button type="button" id="btnLoadPath" class="btn-secondary">Načíst</button>
+            <input type="text" id="pathBox" data-i18n-placeholder="sidebar.path_placeholder" placeholder="/cesta/trace.pcap00"/>
+            <button type="button" id="btnLoadPath" class="btn-secondary" data-i18n="sidebar.path_load">Načíst</button>
           </div>
         </details>
       </section>
 
       <section class="sidebar-section">
-        <h2>Filtry <button type="button" class="hint-icon" title="Filtry se aplikují na pakety i flow">?</button></h2>
+        <h2><span data-i18n="sidebar.filters">Filtry</span> <button type="button" class="hint-icon" data-i18n-title="sidebar.filters_tooltip" title="Filtry se aplikují na pakety i flow">?</button></h2>
         <div class="filter-grid">
           <label class="filter-field">
-            <span class="field-label">bus</span>
+            <span class="field-label" data-i18n="sidebar.bus">bus</span>
             <input type="number" id="fBus" placeholder="—"/>
           </label>
           <label class="filter-field">
-            <span class="field-label">device</span>
+            <span class="field-label" data-i18n="sidebar.device">device</span>
             <input type="number" id="fDev" placeholder="—"/>
           </label>
           <label class="filter-field">
-            <span class="field-label">endpoint</span>
+            <span class="field-label" data-i18n="sidebar.endpoint">endpoint</span>
             <input type="number" id="fEp" placeholder="—"/>
           </label>
         </div>
-        <button type="button" id="btnApplyFilters" class="btn-primary btn-block">Aplikovat filtry</button>
-        <button type="button" id="btnClearFilters" class="btn-ghost btn-block">Vymazat filtry</button>
+        <button type="button" id="btnApplyFilters" class="btn-primary btn-block" data-i18n="sidebar.filter_apply">Aplikovat filtry</button>
+        <button type="button" id="btnClearFilters" class="btn-ghost btn-block" data-i18n="sidebar.filter_clear">Vymazat filtry</button>
       </section>
 
       <section class="sidebar-section" id="sessionsSection" hidden>
-        <h2>Device sessions</h2>
+        <h2 data-i18n="sidebar.device_sessions">Device sessions</h2>
         <div id="sessionsList" class="sessions-list"></div>
       </section>
 
       <section class="sidebar-section">
-        <h2>Klávesové zkratky</h2>
+        <h2 data-i18n="sidebar.shortcuts">Klávesové zkratky</h2>
         <ul class="shortcut-list">
-          <li><kbd>↑</kbd>/<kbd>↓</kbd> pohyb ve flow</li>
-          <li><kbd>PgUp</kbd>/<kbd>PgDn</kbd> rychlý skok</li>
-          <li><kbd>P</kbd> skok na párovanou událost</li>
-          <li><kbd>G</kbd> skok na seq číslo</li>
-          <li><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> historie</li>
-          <li><kbd>1</kbd>–<kbd>9</kbd> přepnutí záložky</li>
+          <li><kbd>↑</kbd>/<kbd>↓</kbd> <span data-i18n="sidebar.shortcut_move">pohyb ve flow</span></li>
+          <li><kbd>PgUp</kbd>/<kbd>PgDn</kbd> <span data-i18n="sidebar.shortcut_jump">rychlý skok</span></li>
+          <li><kbd>P</kbd> <span data-i18n="sidebar.shortcut_paired">skok na párovanou událost</span></li>
+          <li><kbd>G</kbd> <span data-i18n="sidebar.shortcut_goto">skok na seq číslo</span></li>
+          <li><kbd>Alt</kbd>+<kbd>←</kbd>/<kbd>→</kbd> <span data-i18n="sidebar.shortcut_history">historie</span></li>
+          <li><kbd>1</kbd>–<kbd>9</kbd> <span data-i18n="sidebar.shortcut_tabs">přepnutí záložky</span></li>
         </ul>
       </section>
     </aside>
@@ -88,31 +93,31 @@
     <main class="main">
       <nav class="tabs" role="tablist">
         <button type="button" class="tab" data-tab="overview" role="tab">
-          <span class="tab-icon">⌂</span> Přehled
+          <span class="tab-icon">⌂</span> <span data-i18n="tab.overview">Přehled</span>
         </button>
         <button type="button" class="tab" data-tab="packets" role="tab">
-          <span class="tab-icon">▦</span> Pakety
+          <span class="tab-icon">▦</span> <span data-i18n="tab.packets">Pakety</span>
         </button>
         <button type="button" class="tab" data-tab="stream" role="tab">
-          <span class="tab-icon">≡</span> Stream <small>(ASCII)</small>
+          <span class="tab-icon">≡</span> <span data-i18n="tab.stream">Stream</span> <small data-i18n="tab.stream_suffix">(ASCII)</small>
         </button>
         <button type="button" class="tab tab-primary" data-tab="flow" role="tab">
-          <span class="tab-icon">⇋</span> Flow analyzer
+          <span class="tab-icon">⇋</span> <span data-i18n="tab.flow">Flow analyzer</span>
         </button>
         <button type="button" class="tab" data-tab="errors" role="tab">
-          <span class="tab-icon">!</span> Errors
+          <span class="tab-icon">!</span> <span data-i18n="tab.errors">Errors</span>
         </button>
         <button type="button" class="tab" data-tab="sessions" role="tab">
-          <span class="tab-icon">◐</span> Sessions
+          <span class="tab-icon">◐</span> <span data-i18n="tab.sessions">Sessions</span>
         </button>
         <button type="button" class="tab" data-tab="deep" role="tab">
-          <span class="tab-icon">∿</span> Deep analysis
+          <span class="tab-icon">∿</span> <span data-i18n="tab.deep">Deep analysis</span>
         </button>
         <button type="button" class="tab" data-tab="export" role="tab">
-          <span class="tab-icon">⤓</span> Export
+          <span class="tab-icon">⤓</span> <span data-i18n="tab.export">Export</span>
         </button>
         <button type="button" class="tab tab-help" data-tab="help" role="tab">
-          <span class="tab-icon">?</span> Nápověda
+          <span class="tab-icon">?</span> <span data-i18n="tab.help">Nápověda</span>
         </button>
       </nav>
 
@@ -120,56 +125,56 @@
         <!-- ============ Overview ============ -->
         <section class="tab-panel" data-panel="overview" role="tabpanel">
           <div class="empty-state" id="overviewEmpty">
-            <h2>Začněte nahráním PCAP souboru</h2>
-            <p>Použijte nahrávací tlačítko vlevo nebo přetáhněte soubor sem.</p>
+            <h2 data-i18n="overview.empty_title">Začněte nahráním PCAP souboru</h2>
+            <p data-i18n="overview.empty_hint">Použijte nahrávací tlačítko vlevo nebo přetáhněte soubor sem.</p>
           </div>
           <div id="overviewContent" hidden>
             <div class="metrics-grid">
               <div class="metric">
-                <div class="metric-label">Pakety</div>
+                <div class="metric-label" data-i18n="metric.packets">Pakety</div>
                 <div class="metric-value" id="mPackets">—</div>
               </div>
               <div class="metric">
-                <div class="metric-label">Doba trvání</div>
+                <div class="metric-label" data-i18n="metric.duration">Doba trvání</div>
                 <div class="metric-value" id="mDuration">—</div>
               </div>
               <div class="metric">
-                <div class="metric-label">Sessions</div>
+                <div class="metric-label" data-i18n="metric.sessions">Sessions</div>
                 <div class="metric-value" id="mSessions">—</div>
               </div>
               <div class="metric">
-                <div class="metric-label">Runs</div>
+                <div class="metric-label" data-i18n="metric.runs">Runs</div>
                 <div class="metric-value" id="mRuns">—</div>
               </div>
               <div class="metric metric-critical">
-                <div class="metric-label">Critical</div>
+                <div class="metric-label" data-i18n="metric.critical">Critical</div>
                 <div class="metric-value" id="mCritical">—</div>
               </div>
               <div class="metric metric-warning">
-                <div class="metric-label">Warning</div>
+                <div class="metric-label" data-i18n="metric.warning">Warning</div>
                 <div class="metric-value" id="mWarning">—</div>
               </div>
             </div>
 
             <div class="card">
-              <h3>Časové okno</h3>
+              <h3 data-i18n="overview.time_window">Časové okno</h3>
               <div class="time-info" id="timeInfo"></div>
             </div>
 
             <div class="card">
-              <h3>Zařízení</h3>
+              <h3 data-i18n="overview.devices">Zařízení</h3>
               <div id="overviewDevices" class="devices-list"></div>
             </div>
 
             <div class="card">
-              <h3>Rozdělení přenosů a událostí</h3>
+              <h3 data-i18n="overview.distribution">Rozdělení přenosů a událostí</h3>
               <div class="dist-grid">
                 <div>
-                  <h4>Transfer types</h4>
+                  <h4 data-i18n="overview.transfer_types">Transfer types</h4>
                   <div id="overviewXfer" class="dist-bars"></div>
                 </div>
                 <div>
-                  <h4>Event types</h4>
+                  <h4 data-i18n="overview.event_types">Event types</h4>
                   <div id="overviewEvents" class="dist-bars"></div>
                 </div>
               </div>
@@ -182,14 +187,14 @@
           <div class="panel-toolbar">
             <div class="form-row">
               <label class="inline-field">
-                offset <input type="number" id="fOff" value="0"/>
+                <span data-i18n="packets.offset">offset</span> <input type="number" id="fOff" value="0"/>
               </label>
               <label class="inline-field">
-                limit <input type="number" id="fLim" value="50"/>
+                <span data-i18n="packets.limit">limit</span> <input type="number" id="fLim" value="50"/>
               </label>
-              <button type="button" id="btnRefresh" class="btn-primary">Načíst</button>
-              <button type="button" id="btnPrev" class="btn-ghost">← stránka</button>
-              <button type="button" id="btnNext" class="btn-ghost">stránka →</button>
+              <button type="button" id="btnRefresh" class="btn-primary" data-i18n="packets.load">Načíst</button>
+              <button type="button" id="btnPrev" class="btn-ghost" data-i18n="packets.prev">← stránka</button>
+              <button type="button" id="btnNext" class="btn-ghost" data-i18n="packets.next">stránka →</button>
             </div>
           </div>
           <div class="panel-split">
@@ -200,21 +205,21 @@
                     <th>#</th>
                     <th>pcap ts</th>
                     <th>urb</th>
-                    <th>ev</th>
-                    <th>xfer</th>
-                    <th>bus</th>
+                    <th data-i18n="packets.col.ev">ev</th>
+                    <th data-i18n="packets.col.xfer">xfer</th>
+                    <th data-i18n="sidebar.bus">bus</th>
                     <th>dev</th>
                     <th>ep</th>
-                    <th>payload</th>
-                    <th>trezor</th>
+                    <th data-i18n="packets.col.payload">payload</th>
+                    <th data-i18n="packets.col.trezor">trezor</th>
                   </tr>
                 </thead>
                 <tbody id="rowsBody"></tbody>
               </table>
             </div>
             <aside class="detail-aside">
-              <h3>Detail paketu</h3>
-              <pre id="detailOut" class="detail-pre">Vyber řádek…</pre>
+              <h3 data-i18n="packets.detail_title">Detail paketu</h3>
+              <pre id="detailOut" class="detail-pre" data-i18n="packets.detail_placeholder">Vyber řádek…</pre>
             </aside>
           </div>
         </section>
@@ -222,57 +227,57 @@
         <!-- ============ Stream ============ -->
         <section class="tab-panel" data-panel="stream" role="tabpanel">
           <div class="panel-toolbar">
-            <button type="button" id="btnStream" class="btn-primary">Načíst stream</button>
-            <span class="muted">Wireshark-like „Follow stream“ — ASCII překlad bulk komunikace</span>
+            <button type="button" id="btnStream" class="btn-primary" data-i18n="stream.load">Načíst stream</button>
+            <span class="muted" data-i18n="stream.hint">Wireshark-like „Follow stream“ — ASCII překlad bulk komunikace</span>
           </div>
-          <pre id="streamOut" class="stream-pre">Klikni na „Načíst stream“…</pre>
+          <pre id="streamOut" class="stream-pre" data-i18n="stream.placeholder">Klikni na „Načíst stream“…</pre>
         </section>
 
         <!-- ============ Flow analyzer ============ -->
         <section class="tab-panel" data-panel="flow" role="tabpanel">
           <div class="panel-toolbar flow-toolbar">
             <label class="inline-field">
-              Severity
+              <span data-i18n="flow.severity">Severity</span>
               <select id="flowSeverity">
-                <option value="ok">ALL</option>
-                <option value="info">info+</option>
-                <option value="warning" selected>warning+</option>
-                <option value="critical">critical</option>
+                <option value="ok" data-i18n="flow.severity.all">ALL</option>
+                <option value="info" data-i18n="flow.severity.info">info+</option>
+                <option value="warning" selected data-i18n="flow.severity.warning">warning+</option>
+                <option value="critical" data-i18n="flow.severity.critical">critical</option>
               </select>
             </label>
             <label class="inline-field">
-              Direction
+              <span data-i18n="flow.direction">Direction</span>
               <select id="flowDirection">
-                <option value="">vše</option>
+                <option value="" data-i18n="flow.direction.all">vše</option>
                 <option value="HOST→DEV">HOST→DEV</option>
                 <option value="DEV→HOST">DEV→HOST</option>
                 <option value="INTERNAL">INTERNAL</option>
               </select>
             </label>
             <label class="inline-field">
-              Run
-              <input type="number" id="flowRun" placeholder="vše"/>
+              <span data-i18n="flow.run">Run</span>
+              <input type="number" id="flowRun" data-i18n-placeholder="flow.run_placeholder" placeholder="vše"/>
             </label>
             <label class="inline-field flow-search">
-              Search
-              <input type="text" id="flowSearch" placeholder="ERROR, DN/DP…"/>
+              <span data-i18n="flow.search">Search</span>
+              <input type="text" id="flowSearch" data-i18n-placeholder="flow.search_placeholder" placeholder="ERROR, DN/DP…"/>
             </label>
-            <label class="inline-field flow-jump" title="Skoč na konkrétní seq číslo události (Enter)">
-              Skoč na #
-              <input type="number" id="flowJumpSeq" placeholder="např. 423" min="1"/>
+            <label class="inline-field flow-jump" data-i18n-title="flow.jump_tooltip" title="Skoč na konkrétní seq číslo události (Enter)">
+              <span data-i18n="flow.jump_label">Skoč na #</span>
+              <input type="number" id="flowJumpSeq" data-i18n-placeholder="flow.jump_placeholder" placeholder="např. 423" min="1"/>
             </label>
-            <button type="button" id="btnFlowJump" class="btn-secondary" title="Skoč na zadané seq">→ #</button>
+            <button type="button" id="btnFlowJump" class="btn-secondary" data-i18n-title="flow.jump_button_tooltip" title="Skoč na zadané seq">→ #</button>
             <div class="toolbar-spacer"></div>
-            <button type="button" id="flowBack" class="btn-ghost" title="Zpět (Alt+←)">←</button>
-            <button type="button" id="flowForward" class="btn-ghost" title="Vpřed (Alt+→)">→</button>
-            <button type="button" id="btnFlow" class="btn-primary">Načíst</button>
+            <button type="button" id="flowBack" class="btn-ghost" data-i18n-title="flow.back_tooltip" title="Zpět (Alt+←)">←</button>
+            <button type="button" id="flowForward" class="btn-ghost" data-i18n-title="flow.forward_tooltip" title="Vpřed (Alt+→)">→</button>
+            <button type="button" id="btnFlow" class="btn-primary" data-i18n="flow.load">Načíst</button>
           </div>
           <div class="legend-row">
             <span class="legend-item legend-out">HOST→DEV</span>
             <span class="legend-item legend-in">DEV→HOST</span>
-            <span class="legend-item legend-internal">INTERNAL</span>
-            <span class="legend-item legend-warning">warning</span>
-            <span class="legend-item legend-critical">critical</span>
+            <span class="legend-item legend-internal" data-i18n="flow.legend.internal">INTERNAL</span>
+            <span class="legend-item legend-warning" data-i18n="flow.legend.warning">warning</span>
+            <span class="legend-item legend-critical" data-i18n="flow.legend.critical">critical</span>
           </div>
           <div class="flow-layout">
             <div class="flow-pane">
@@ -282,15 +287,15 @@
               </div>
             </div>
             <aside class="flow-detail-pane">
-              <h3>Detail události</h3>
+              <h3 data-i18n="flow.detail_title">Detail události</h3>
               <pre id="flowDetailOut" class="detail-pre"></pre>
-              <h3>Kauzální kontext</h3>
+              <h3 data-i18n="flow.causal_title">Kauzální kontext</h3>
               <div id="flowCausalList" class="flow-causal-list"></div>
             </aside>
           </div>
           <div class="timeline-wrap">
             <canvas id="flowTimeline" height="90"></canvas>
-            <div class="muted">Klikni do timelinu pro skok na úsek.</div>
+            <div class="muted" data-i18n="flow.timeline_hint">Klikni do timelinu pro skok na úsek.</div>
           </div>
         </section>
 
@@ -298,74 +303,74 @@
         <section class="tab-panel" data-panel="errors" role="tabpanel">
           <div class="panel-toolbar">
             <label class="inline-field">
-              Min severity
+              <span data-i18n="errors.min_severity">Min severity</span>
               <select id="errSeverity">
-                <option value="ok">ALL</option>
-                <option value="info">info+</option>
-                <option value="warning" selected>warning+</option>
-                <option value="critical">critical</option>
+                <option value="ok" data-i18n="flow.severity.all">ALL</option>
+                <option value="info" data-i18n="flow.severity.info">info+</option>
+                <option value="warning" selected data-i18n="flow.severity.warning">warning+</option>
+                <option value="critical" data-i18n="flow.severity.critical">critical</option>
               </select>
             </label>
             <label class="inline-field">
-              Layer
+              <span data-i18n="errors.layer">Layer</span>
               <select id="errLayer">
-                <option value="">vše</option>
-                <option value="transport">transport</option>
-                <option value="connection">connection</option>
-                <option value="protocol">protocol</option>
-                <option value="application">application</option>
-                <option value="timing">timing</option>
+                <option value="" data-i18n="errors.layer.all">vše</option>
+                <option value="transport" data-i18n="errors.layer.transport">transport</option>
+                <option value="connection" data-i18n="errors.layer.connection">connection</option>
+                <option value="protocol" data-i18n="errors.layer.protocol">protocol</option>
+                <option value="application" data-i18n="errors.layer.application">application</option>
+                <option value="timing" data-i18n="errors.layer.timing">timing</option>
               </select>
             </label>
-            <button type="button" id="btnLoadErrors" class="btn-primary">Načíst chyby</button>
+            <button type="button" id="btnLoadErrors" class="btn-primary" data-i18n="errors.load">Načíst chyby</button>
           </div>
           <div class="table-wrapper">
             <table class="errors-table">
               <thead>
                 <tr>
                   <th>seq</th>
-                  <th>layer</th>
-                  <th>severity</th>
-                  <th>type</th>
-                  <th>description</th>
+                  <th data-i18n="errors.col.layer">layer</th>
+                  <th data-i18n="errors.col.severity">severity</th>
+                  <th data-i18n="errors.col.type">type</th>
+                  <th data-i18n="errors.col.description">description</th>
                   <th>ts</th>
-                  <th>causal hints</th>
+                  <th data-i18n="errors.col.causal">causal hints</th>
                 </tr>
               </thead>
               <tbody id="errorsBody"></tbody>
             </table>
           </div>
-          <p class="muted" id="errorsEmpty">Klikni na „Načíst chyby“ po nahrání capture.</p>
+          <p class="muted" id="errorsEmpty" data-i18n="errors.empty_hint">Klikni na „Načíst chyby“ po nahrání capture.</p>
         </section>
 
         <!-- ============ Sessions / Runs ============ -->
         <section class="tab-panel" data-panel="sessions" role="tabpanel">
           <div class="panel-toolbar">
-            <button type="button" id="btnLoadSessions" class="btn-primary">Načíst sessions a runy</button>
+            <button type="button" id="btnLoadSessions" class="btn-primary" data-i18n="sessions.load">Načíst sessions a runy</button>
             <label class="inline-field sessions-search">
-              Hledat DUT SN <small class="muted">(case-sensitive)</small>
-              <input type="search" id="sessionsSearch" placeholder="část SN nebo /regex/ — rozlišuje velikost písmen" autocomplete="off" spellcheck="false"/>
+              <span data-i18n="sessions.search_label">Hledat DUT SN</span> <small class="muted" data-i18n="sessions.search_case_note">(case-sensitive)</small>
+              <input type="search" id="sessionsSearch" data-i18n-placeholder="sessions.search_placeholder" placeholder="část SN nebo /regex/ — rozlišuje velikost písmen" autocomplete="off" spellcheck="false"/>
             </label>
-            <button type="button" id="btnSessionsClear" class="btn-ghost" title="Vymazat hledání">×</button>
+            <button type="button" id="btnSessionsClear" class="btn-ghost" data-i18n-title="sessions.search_clear_tooltip" title="Vymazat hledání">×</button>
             <span class="muted" id="sessionsMatchInfo"></span>
           </div>
           <div class="card">
-            <h3>USB sessions <small class="muted">(per bus/device)</small></h3>
-            <p class="muted">Hranice = změna <code>(bus, device_address)</code>. Tester serial je z <code>OK …</code> odpovědí, DUT serials z <code>checked-otp-device-sn-write</code>.</p>
+            <h3><span data-i18n="sessions.usb_sessions">USB sessions</span> <small class="muted" data-i18n="sessions.usb_sessions_sub">(per bus/device)</small></h3>
+            <p class="muted" data-i18n="sessions.usb_sessions_hint">Hranice = změna (bus, device_address). Tester serial je z `OK …` odpovědí, DUT serials z `checked-otp-device-sn-write`.</p>
             <div class="table-wrapper">
               <table class="sessions-table">
                 <thead>
                   <tr>
                     <th>#</th>
-                    <th>bus</th>
+                    <th data-i18n="sidebar.bus">bus</th>
                     <th>dev</th>
-                    <th>tester SN</th>
-                    <th>DUT SN(s)</th>
-                    <th>start seq</th>
-                    <th>end seq</th>
-                    <th>events</th>
-                    <th>start ts</th>
-                    <th>doba</th>
+                    <th data-i18n="sessions.col.tester_sn">tester SN</th>
+                    <th data-i18n="sessions.col.dut_sn">DUT SN(s)</th>
+                    <th data-i18n="sessions.col.start_seq">start seq</th>
+                    <th data-i18n="sessions.col.end_seq">end seq</th>
+                    <th data-i18n="sessions.col.events">events</th>
+                    <th data-i18n="sessions.col.start_ts">start ts</th>
+                    <th data-i18n="sessions.col.duration">doba</th>
                   </tr>
                 </thead>
                 <tbody id="sessionsTableBody"></tbody>
@@ -373,20 +378,20 @@
             </div>
           </div>
           <div class="card">
-            <h3>Test runs <small class="muted">(jednotlivé HW kusy)</small></h3>
-            <p class="muted">Každý run programuje jeden DUT. <strong>DUT SN</strong> = první argument příkazu <code>checked-otp-device-sn-write</code> v daném runu.</p>
+            <h3><span data-i18n="sessions.test_runs">Test runs</span> <small class="muted" data-i18n="sessions.test_runs_sub">(jednotlivé HW kusy)</small></h3>
+            <p class="muted" data-i18n="sessions.test_runs_hint">Každý run programuje jeden DUT. DUT SN = první argument příkazu `checked-otp-device-sn-write` v daném runu.</p>
             <div class="table-wrapper">
               <table class="runs-table">
                 <thead>
                   <tr>
-                    <th>run</th>
-                    <th>DUT SN</th>
-                    <th>start seq</th>
-                    <th>end seq</th>
-                    <th>cmds</th>
-                    <th>errors</th>
-                    <th>doba</th>
-                    <th>completeness</th>
+                    <th data-i18n="sessions.col.run">run</th>
+                    <th data-i18n="sessions.col.dut_sn_single">DUT SN</th>
+                    <th data-i18n="sessions.col.start_seq">start seq</th>
+                    <th data-i18n="sessions.col.end_seq">end seq</th>
+                    <th data-i18n="sessions.col.cmds">cmds</th>
+                    <th data-i18n="sessions.col.errors_short">errors</th>
+                    <th data-i18n="sessions.col.duration">doba</th>
+                    <th data-i18n="sessions.col.completeness">completeness</th>
                   </tr>
                 </thead>
                 <tbody id="runsBody"></tbody>
@@ -398,25 +403,25 @@
         <!-- ============ Deep analysis ============ -->
         <section class="tab-panel" data-panel="deep" role="tabpanel">
           <div class="panel-toolbar">
-            <button type="button" id="btnDeep" class="btn-primary">Spustit hloubkovou analýzu</button>
-            <span class="muted">Segmentace, baseline scoring, mining pravidel</span>
+            <button type="button" id="btnDeep" class="btn-primary" data-i18n="deep.run_button">Spustit hloubkovou analýzu</button>
+            <span class="muted" data-i18n="deep.hint">Segmentace, baseline scoring, mining pravidel</span>
           </div>
           <div class="card">
-            <h3>Souhrn</h3>
+            <h3 data-i18n="deep.summary">Souhrn</h3>
             <pre id="deepSummaryOut" class="detail-pre">—</pre>
           </div>
           <div class="card">
-            <h3>Top anomálie</h3>
+            <h3 data-i18n="deep.findings">Top anomálie</h3>
             <div class="table-wrapper">
               <table class="findings-table">
                 <thead>
                   <tr>
-                    <th>score</th>
-                    <th>cmd</th>
-                    <th>outcome</th>
-                    <th>run</th>
-                    <th>latency</th>
-                    <th>reasons</th>
+                    <th data-i18n="deep.col.score">score</th>
+                    <th data-i18n="deep.col.cmd">cmd</th>
+                    <th data-i18n="deep.col.outcome">outcome</th>
+                    <th data-i18n="deep.col.run">run</th>
+                    <th data-i18n="deep.col.latency">latency</th>
+                    <th data-i18n="deep.col.reasons">reasons</th>
                   </tr>
                 </thead>
                 <tbody id="deepFindingsBody"></tbody>
@@ -424,16 +429,16 @@
             </div>
           </div>
           <div class="card">
-            <h3>Návrhy pravidel</h3>
+            <h3 data-i18n="deep.rules">Návrhy pravidel</h3>
             <div class="table-wrapper">
               <table class="rules-table">
                 <thead>
                   <tr>
-                    <th>rule</th>
-                    <th>conf</th>
-                    <th>support</th>
-                    <th>popis</th>
-                    <th>akce</th>
+                    <th data-i18n="deep.col.rule">rule</th>
+                    <th data-i18n="deep.col.conf">conf</th>
+                    <th data-i18n="deep.col.support">support</th>
+                    <th data-i18n="deep.col.popis">popis</th>
+                    <th data-i18n="deep.col.akce">akce</th>
                   </tr>
                 </thead>
                 <tbody id="deepRulesBody"></tbody>
@@ -447,17 +452,35 @@
           <div class="help-content">
 
             <div class="help-toc card">
-              <h3>Obsah nápovědy</h3>
-              <ul>
-                <li><a href="#help-start">1. Rychlý start</a></li>
-                <li><a href="#help-tabs">2. Co která záložka dělá</a></li>
-                <li><a href="#help-flow">3. Jak číst Flow analyzer</a></li>
-                <li><a href="#help-glossary">4. Slovník event tříd</a></li>
-                <li><a href="#help-severity">5. Severity (závažnost)</a></li>
-                <li><a href="#help-scenarios">6. Časté scénáře</a></li>
-                <li><a href="#help-keys">7. Klávesové zkratky</a></li>
-              </ul>
+              <div data-i18n-block="cs">
+                <h3>Obsah nápovědy</h3>
+                <ul>
+                  <li><a href="#help-start">1. Rychlý start</a></li>
+                  <li><a href="#help-tabs">2. Co která záložka dělá</a></li>
+                  <li><a href="#help-flow">3. Jak číst Flow analyzer</a></li>
+                  <li><a href="#help-glossary">4. Slovník event tříd</a></li>
+                  <li><a href="#help-severity">5. Severity (závažnost)</a></li>
+                  <li><a href="#help-scenarios">6. Časté scénáře</a></li>
+                  <li><a href="#help-keys">7. Klávesové zkratky</a></li>
+                  <li><a href="#help-limits">8. Limity uploadu a konfigurace</a></li>
+                </ul>
+              </div>
+              <div data-i18n-block="en" hidden>
+                <h3>Help contents</h3>
+                <ul>
+                  <li><a href="#help-start">1. Quick start</a></li>
+                  <li><a href="#help-tabs">2. What each tab does</a></li>
+                  <li><a href="#help-flow">3. Reading the Flow analyzer</a></li>
+                  <li><a href="#help-glossary">4. Event-class glossary</a></li>
+                  <li><a href="#help-severity">5. Severity levels</a></li>
+                  <li><a href="#help-scenarios">6. Common scenarios</a></li>
+                  <li><a href="#help-keys">7. Keyboard shortcuts</a></li>
+                  <li><a href="#help-limits">8. Upload limits &amp; configuration</a></li>
+                </ul>
+              </div>
             </div>
+
+            <div data-i18n-block="cs">
 
             <!-- 1 ────────────────────────────────────────── -->
             <div class="card" id="help-start">
@@ -468,6 +491,7 @@
                 <li><strong>Pro detailní pohled</strong> přepni na záložku <em>Flow analyzer</em> — to je hlavní zobrazení, kde uvidíš chronologii příkazů a odpovědí.</li>
                 <li><strong>Pokud něco selhalo</strong>, otevři záložku <em>Errors</em> — vidíš seznam detekovaných chyb. Klik na řádek tě skočne přímo do Flow na příslušné místo.</li>
                 <li><strong>Pro CI integraci</strong> stáhni JUnit XML ze záložky <em>Export</em>.</li>
+                <li><strong>Verze aplikace + limity</strong>: klikni na <strong>USB Analysis</strong> v levém horním rohu hlavičky — otevře se modální okno s aktuální verzí, limity uploadu a stavem serveru.</li>
               </ol>
             </div>
 
@@ -483,8 +507,9 @@
                   <tr><td><strong>Flow analyzer</strong></td><td>Hlavní view: chronologie command ↔ response s detekcí timeoutů, CRC chyb, reconnectů, kauzálních souvislostí. Klik na řádek ukáže detail vpravo.</td></tr>
                   <tr><td><strong>Errors</strong></td><td>Filtrovaný seznam jen problémů (timeouts, CRC mismatch, EPROTO atd.). Klik = skok do Flow.</td></tr>
                   <tr><td><strong>Sessions</strong></td><td>Per-zařízení (bus/dev/serial) a per-run statistiky. Užitečné když capture obsahuje výměnu zařízení nebo víc runů testu.</td></tr>
-                  <tr><td><strong>Deep analysis</strong></td><td>Strojové učení: porovnání proti naučenému baseline, mining pravidel napříč soubory. Dlouhá operace.</td></tr>
+                  <tr><td><strong>Deep analysis</strong></td><td>Strojové učení: porovnání proti naučenému baseline, mining pravidel napříč soubory. Dlouhá operace — spouští se ručně tlačítkem, ne automaticky při přepnutí na záložku.</td></tr>
                   <tr><td><strong>Export</strong></td><td>Stažení flow analýzy v JSON / CSV / HTML / JUnit XML.</td></tr>
+                  <tr><td><strong>Nápověda</strong></td><td>Toto okno — manuál, slovník event tříd a klávesové zkratky. Dostupné i bez nahraného capture.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -511,6 +536,25 @@
                 <span style="color: var(--accent);">⛓</span> = chunkovaný příkaz (rozdělený na víc paketů),
                 <span style="color: var(--sev-warning);">žlutý levý proužek</span> = causal suspect (tato událost je v kauzálním okně jiné chyby).
               </p>
+
+              <h4>Toolbar nad seznamem</h4>
+              <table class="help-table">
+                <thead><tr><th>Ovládací prvek</th><th>K čemu</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Severity</strong></td><td><code>ALL</code> = vše včetně <em>ok</em>, <code>info+</code>, <code>warning+</code> (výchozí), <code>critical</code>. <strong>Pozn.:</strong> normální command a OK response mají severity <em>ok</em>, takže ve výchozím filtru <em>warning+</em> nejsou vidět — pokud chceš vidět běžnou komunikaci, přepni na <code>ALL</code>.</td></tr>
+                  <tr><td><strong>Direction</strong></td><td>Filtruje <code>HOST→DEV</code>, <code>DEV→HOST</code>, nebo jen <code>INTERNAL</code> meta události (timeout, reconnect…).</td></tr>
+                  <tr><td><strong>Run</strong></td><td>Číslo runu — zobrazí jen události z konkrétního runu. Prázdné = vše.</td></tr>
+                  <tr><td><strong>Search</strong></td><td>Fulltext nad <code>content</code> všech eventů. Hledá i v rozšířeném textu odpovědí.</td></tr>
+                  <tr><td><strong>Skoč na #</strong></td><td>Zadej seq číslo + Enter (nebo klávesa <kbd>G</kbd>) — okamžitě skočí na řádek a vybere ho.</td></tr>
+                  <tr><td><strong>← / →</strong></td><td>Historie navigace ve flow (skoky přes search, paired-seq, sessions…). Alt+šipky stejně.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Spodní timeline graf</h4>
+              <p>Pod tabulkou je hustotní graf (bucket-y po čase): zelené sloupce = <em>ok</em>, žluté = <em>warning</em>, červené = <em>critical</em>, fialové = <em>reconnect</em>. <strong>Klikni do grafu</strong> pro skok na první událost v daném časovém úseku.</p>
+
+              <h4>Detail vpravo + kauzální kontext</h4>
+              <p>Klik na řádek zobrazí JSON detail vybraného eventu vpravo. Pod ním je <em>Kauzální kontext</em> — události, které dle analyzéru mohou souviset (jiné warningy/criticals v okně 10 eventů zpět). Klik na kandidáta tě tam přesune.</p>
             </div>
 
             <!-- 4 ────────────────────────────────────────── -->
@@ -547,7 +591,7 @@
                 <thead><tr><th>Třída</th><th>Co znamená</th></tr></thead>
                 <tbody>
                   <tr><td><code>timeout</code></td><td><strong>Tester poslal příkaz a do 30 s nedostal odpověď.</strong> Zařízení se buď zaseklo, nebo odpověď nedorazila po sběrnici. Obsah řádku ukazuje skutečnou prodlevu (např. <code>Timeout 35000.0ms na checked-optiga-init</code>).</td></tr>
-                  <tr><td><code>incomplete_segment</code></td><td><strong>Předchozí příkaz nebyl uzavřený a přišel nový.</strong> Příklad: tester poslal příkaz A, ale ještě než A dostal odpověď, poslal příkaz B (nebo nastal reconnect). Stav komunikace je nekonzistentní — zařízení může nebo nemusí příkaz A zpracovat. <em>Pozn.: pokud je předchozí příkaz <code>chunked</code>, jde o normální pokračování — dnes se to <strong>neoznačí</strong> jako incomplete_segment.</em></td></tr>
+                  <tr><td><code>incomplete_segment</code></td><td><strong>Předchozí příkaz nebyl uzavřený a přišel nový.</strong> Příklad: tester poslal příkaz A, ale ještě než A dostal odpověď, poslal příkaz B, nastal reconnect, nebo se změnilo zařízení (<code>device_change</code>). Stav komunikace je nekonzistentní — zařízení může nebo nemusí příkaz A zpracovat. <em>Pozn.: continuation paket chunkovaného příkazu (bez CR/LF terminátoru u parenta) je rozpoznán jako <code>command_chunk</code>, ne incomplete_segment — chunkování není chyba. <strong>Ale</strong> pokud chunkovaný příkaz přeruší <code>device_change</code> nebo <code>timeout</code>, incomplete_segment se emituje, protože odpověď už nikdy nedojde.</em></td></tr>
                   <tr><td><code>reconnect</code></td><td>Mezi dvěma bulk přenosy byla mezera &gt;5 s — pravděpodobně se zařízení odpojilo a znovu připojilo, nebo se restartovalo. Často následuje sekvence control transfers (re-enumerace).</td></tr>
                   <tr><td><code>usb_error</code></td><td>USB chyba na fyzické vrstvě (např. status <code>-71</code> = EPROTO = chyba protokolu, signal integrity, DN/DP). Pokud následuje <code>reconnect</code>, je to typicky reset zařízení (info severity); izolovaná EPROTO bez reconnect = critical.</td></tr>
                   <tr><td><code>lost_urb</code></td><td>USB Request Block byl odeslán (Submit), ale ani po 60 s nedorazil Complete. Zpráva se „ztratila" v ovladači nebo zařízení.</td></tr>
@@ -621,6 +665,31 @@
                 <h4>Latence příkazu skočila z 10 ms na 300 ms</h4>
                 <p>Detektor to označí jako <code>timing_critical</code>. Možné příčiny: zařízení provádí dlouhou operaci (kryptografii, flash write), nebo kontentaci na USB sběrnici. Zkontroluj <code>response_progress</code> řádky — pokud přichází <code>#</code> hlášení, zařízení něco dělá; pokud je ticho, je to anomálie.</p>
               </div>
+
+              <div class="scenario">
+                <h4>Příkaz má vedle sebe ikonu <span style="color: var(--accent);">⛓</span></h4>
+                <p><strong>Chunkovaný příkaz</strong> — text byl tak dlouhý, že se nevešel do jednoho USB paketu a USB ho rozdělil. Parent řádek má kompletní obsah po složení všech chunků (zobrazený s prefixem <code>[chunked: N pkts, M B]</code>); pod ním následují <code>command_chunk</code> řádky (italic / dimmed) — pokračovací pakety. <strong>Není to chyba.</strong></p>
+              </div>
+
+              <div class="scenario">
+                <h4>Hledám konkrétní DUT (kus HW)</h4>
+                <p>Otevři záložku <em>Sessions</em>, klikni <em>Načíst sessions a runy</em>, pak do pole <strong>Hledat DUT SN</strong> piš část seriálu. Filtr je <strong>case-sensitive</strong> (rozlišuje velká/malá písmena), podporuje <code>/regex/</code>. Klik na řádek tě skočne na první událost tohoto DUTu ve Flow.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>„Server ztratil aktuální capture — nahrajte znovu"</h4>
+                <p>Po restartu serveru se ztratila mapa capture-id → soubor. Aplikace automaticky resetuje stav a zobrazí upload zónu. Nahraj PCAP znovu. <em>Server se snaží mapu perzistovat na disk (<code>USB_ANALYSIS_STATE_DIR</code>), ale dočasné PCAP soubory v <code>/tmp</code> systém čas od času promazává — pak je třeba je nahrát znovu.</em></p>
+              </div>
+
+              <div class="scenario">
+                <h4>Ve Flow analyzeru nevidím normální command/response řádky</h4>
+                <p>Severity filter je výchozím nastavený na <code>warning+</code>, který schovává běžné <em>ok</em> události (úspěšné commandy + OK odpovědi). Přepni na <code>ALL</code> v Severity selectoru pro kompletní výpis.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Skok na konkrétní řádek</h4>
+                <p>Stiskni <kbd>G</kbd> (jako „goto"), zadej seq číslo, Enter. Funguje napříč filtry. Funguje i s plně načteným streamem (žádné lazy fetching) — skok je instantní.</p>
+              </div>
             </div>
 
             <!-- 7 ────────────────────────────────────────── -->
@@ -629,43 +698,320 @@
               <table class="help-table">
                 <thead><tr><th>Klávesa</th><th>Akce</th></tr></thead>
                 <tbody>
-                  <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Přepnutí záložky podle pořadí</td></tr>
+                  <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Přepnutí záložky podle pořadí (1=Přehled … 9=Nápověda)</td></tr>
                   <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Pohyb mezi řádky ve Flow analyzeru</td></tr>
                   <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>Skok o 20 řádků</td></tr>
                   <tr><td><kbd>P</kbd></td><td>Skok na párovanou událost (cmd ↔ response)</td></tr>
+                  <tr><td><kbd>G</kbd></td><td>Focus do pole „Skoč na #" — napiš seq číslo + <kbd>Enter</kbd></td></tr>
                   <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Zpět / vpřed v historii navigace</td></tr>
+                  <tr><td><kbd>Esc</kbd></td><td>Zavřít otevřený modal (např. „O aplikaci")</td></tr>
+                </tbody>
+              </table>
+              <p class="muted">Zkratky jsou inaktivní když je focus v textovém poli (INPUT / TEXTAREA / SELECT).</p>
+            </div>
+
+            <!-- 8 ────────────────────────────────────────── -->
+            <div class="card" id="help-limits">
+              <h3>8. Limity uploadu a konfigurace</h3>
+              <p>Aktuální hodnoty server-side limitů uvidíš v <strong>About modálu</strong> (klik na <em>USB Analysis</em> v levém horním rohu hlavičky → sekce „Limity uploadu"). Výchozí hodnoty:</p>
+              <table class="help-table">
+                <thead><tr><th>Limit</th><th>Výchozí</th><th>Env proměnná</th></tr></thead>
+                <tbody>
+                  <tr><td>Velikost jednoho souboru</td><td>2 GB</td><td><code>USB_ANALYSIS_MAX_UPLOAD_BYTES</code></td></tr>
+                  <tr><td>Počet souborů v jednom uploadu</td><td>64</td><td><code>USB_ANALYSIS_MAX_UPLOAD_FILES</code></td></tr>
+                  <tr><td>Souhrnný limit multi-uploadu</td><td>16 GB</td><td><code>USB_ANALYSIS_MAX_UPLOAD_TOTAL_BYTES</code></td></tr>
+                  <tr><td>Flow LRU cache (zanalyzované captures)</td><td>16 záznamů</td><td><code>USB_ANALYSIS_FLOW_CACHE_MAX</code></td></tr>
+                  <tr><td>Perzistence capture-id mapy</td><td><code>$TMPDIR/usb-analysis</code></td><td><code>USB_ANALYSIS_STATE_DIR</code></td></tr>
+                </tbody>
+              </table>
+              <p class="help-callout">
+                <strong>Pozor na reverse proxy.</strong> Aplikace běžící za nginx / Cloudflare / Traefik nasazením může narazit na <em>body-size limit</em> proxy (často 1 MB - 100 MB). Pak se velký upload uřízne dřív, než dojde do FastAPI. Konfigurace závisí na deployi — viz README sekce „Reverse proxy".
+              </p>
+              <p class="muted">Po restartu serveru se mapa capture-id obnoví z disku (<code>captures.json</code> v <code>STATE_DIR</code>), pokud dočasné PCAP soubory v <code>/tmp</code> stále existují.</p>
+            </div>
+
+            </div><!-- end data-i18n-block="cs" -->
+
+            <div data-i18n-block="en" hidden>
+
+            <!-- 1 ────────────────────────────────────────── -->
+            <div class="card" id="help-start-en">
+              <h3>1. Quick start</h3>
+              <ol class="help-steps">
+                <li><strong>Upload a PCAP.</strong> Use <em>Upload</em> in the left sidebar or drop files onto the upload area. The app accepts <code>.pcap</code>, <code>.pcap00</code>–<code>.pcapNN</code> in <code>LINKTYPE_USB_LINUX_MMAPPED</code> format (Linux <code>usbmon</code> capture).</li>
+                <li><strong>After upload</strong> a green dot lights up in the header and the <em>Overview</em> tab shows the summary (packet count, duration, sessions, runs, critical events).</li>
+                <li><strong>For a detailed view</strong> switch to the <em>Flow analyzer</em> tab — the main view with chronological commands and responses.</li>
+                <li><strong>If something failed</strong>, open the <em>Errors</em> tab to see all detected problems. Clicking a row jumps to its location in Flow.</li>
+                <li><strong>For CI integration</strong> grab a JUnit XML from the <em>Export</em> tab.</li>
+                <li><strong>Version + limits:</strong> click <strong>USB Analysis</strong> in the top-left corner — a modal shows current version, upload limits and server runtime.</li>
+              </ol>
+            </div>
+
+            <!-- 2 ────────────────────────────────────────── -->
+            <div class="card" id="help-tabs-en">
+              <h3>2. What each tab does</h3>
+              <table class="help-table">
+                <thead><tr><th>Tab</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Overview</strong></td><td>Capture summary: packet count, duration, runs, sessions, critical/warning counts. First stop after uploading.</td></tr>
+                  <tr><td><strong>Packets</strong></td><td>Raw USB packet table (technical view). Each row = one URB Submit/Complete with metadata (bus, device, endpoint, payload hex).</td></tr>
+                  <tr><td><strong>Stream</strong></td><td>Wireshark-style "Follow Stream" — ASCII translation of bulk communication. Shows what the tester sent and what the device replied.</td></tr>
+                  <tr><td><strong>Flow analyzer</strong></td><td>Main view: chronological command ↔ response timeline with timeout / CRC / reconnect detection and causal hints. Click a row to view its JSON on the right.</td></tr>
+                  <tr><td><strong>Errors</strong></td><td>Filtered list of problems only (timeouts, CRC mismatch, EPROTO …). Click = jump to Flow.</td></tr>
+                  <tr><td><strong>Sessions</strong></td><td>Per-device (bus/dev/serial) and per-run statistics. Useful when a capture spans device swaps or multiple test runs.</td></tr>
+                  <tr><td><strong>Deep analysis</strong></td><td>Machine learning: comparison against a learned baseline, rule mining across files. Long operation — must be triggered manually with the button.</td></tr>
+                  <tr><td><strong>Export</strong></td><td>Download the flow analysis as JSON / CSV / HTML / JUnit XML.</td></tr>
+                  <tr><td><strong>Help</strong></td><td>This window — manual, event-class glossary and keyboard shortcuts. Available without an uploaded capture.</td></tr>
                 </tbody>
               </table>
             </div>
 
+            <!-- 3 ────────────────────────────────────────── -->
+            <div class="card" id="help-flow-en">
+              <h3>3. Reading the Flow analyzer</h3>
+              <p>Each row is one event. Columns from left to right:</p>
+              <table class="help-table">
+                <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>seq</code></td><td>Event ordinal within the capture. Key for cross-references and pairing.</td></tr>
+                  <tr><td><code>delta_ms</code></td><td>Time since the previous event in milliseconds. A large jump = potential stall.</td></tr>
+                  <tr><td><code>direction</code></td><td><span class="legend-item legend-out">HOST→DEV</span> tester sent data; <span class="legend-item legend-in">DEV→HOST</span> device responded; <span class="legend-item legend-internal">INTERNAL</span> meta event (timeout, reconnect…).</td></tr>
+                  <tr><td><code>dev-tag</code></td><td>Grey badge <code>b1/d4|D736D92D</code> = bus/device/serial. Tells you which USB device produced the event.</td></tr>
+                  <tr><td><code>[event_class]</code></td><td>Event type — see the <a href="#help-glossary">glossary below</a>.</td></tr>
+                  <tr><td><code>content</code></td><td>Human-readable description: command text for <code>command</code>, reason for errors.</td></tr>
+                </tbody>
+              </table>
+              <p class="help-callout">
+                <strong>Row indicators:</strong>
+                <span class="legend-item legend-warning">yellow border</span> = warning,
+                <span class="legend-item legend-critical">red border</span> = critical,
+                <span style="color: var(--accent);">⛓</span> = chunked command (split into multiple packets),
+                <span style="color: var(--sev-warning);">yellow left stripe</span> = causal suspect (this event sits in another error's causal window).
+              </p>
+
+              <h4>Toolbar above the list</h4>
+              <table class="help-table">
+                <thead><tr><th>Control</th><th>Purpose</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Severity</strong></td><td><code>ALL</code> = everything including <em>ok</em>, <code>info+</code>, <code>warning+</code> (default), <code>critical</code>. <strong>Note:</strong> normal commands and OK responses are <em>ok</em>, so they're hidden under the default <em>warning+</em> filter — switch to <code>ALL</code> to see baseline communication.</td></tr>
+                  <tr><td><strong>Direction</strong></td><td>Filter on <code>HOST→DEV</code>, <code>DEV→HOST</code> or <code>INTERNAL</code> meta events only.</td></tr>
+                  <tr><td><strong>Run</strong></td><td>Run number — shows only events from that run. Empty = all.</td></tr>
+                  <tr><td><strong>Search</strong></td><td>Fulltext over <code>content</code> of every event.</td></tr>
+                  <tr><td><strong>Go to #</strong></td><td>Enter a seq number + Enter (or press <kbd>G</kbd>) — instantly jumps and selects.</td></tr>
+                  <tr><td><strong>← / →</strong></td><td>Navigation history within Flow (search, paired-seq, sessions jumps). Alt+arrows same.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Bottom timeline graph</h4>
+              <p>Below the list is a density bucket chart: green bars = <em>ok</em>, yellow = <em>warning</em>, red = <em>critical</em>, purple = <em>reconnect</em>. <strong>Click in the chart</strong> to jump to the first event in that time bucket.</p>
+
+              <h4>Detail panel + causal context</h4>
+              <p>Clicking a row shows the event's JSON detail on the right. Below it is <em>Causal context</em> — events the analyzer considers related (other warnings/criticals within a 10-event window before). Click a candidate to jump there.</p>
+            </div>
+
+            <!-- 4 ────────────────────────────────────────── -->
+            <div class="card" id="help-glossary-en">
+              <h3>4. Event-class glossary</h3>
+              <p>Every row in Flow carries a tag like <code>[command]</code>, <code>[timeout]</code>, <code>[incomplete_segment]</code>. Here's what they mean:</p>
+
+              <h4>Tester SN vs. DUT SN — who's who</h4>
+              <table class="help-table">
+                <thead><tr><th>Term</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><strong>Tester SN</strong></td><td>Programming-station (tester) serial. Comes from <code>OK XXXXXXXX</code> responses (8 hex chars). <strong>Constant</strong> across all runs in one capture — one tester programs many DUTs.</td></tr>
+                  <tr><td><strong>DUT SN</strong></td><td>Serial of the specific hardware piece (Device-Under-Test). Comes from the <code>checked-otp-device-sn-write &lt;SN&gt;</code> command — the first argument after the command name. <strong>Changes per run</strong> — each run programs a new DUT.</td></tr>
+                  <tr><td><code>device_serial</code> in event JSON</td><td>Current identity: DUT SN takes priority (once written in a run), otherwise tester SN. This is "who is talking right now" from the user's viewpoint.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Communication events</h4>
+              <table class="help-table">
+                <thead><tr><th>Class</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>command</code></td><td>Tester sent a command to the device (e.g. <code>ping</code>, <code>checked-optiga-init</code>). Row content is the full sent text including the CRC suffix.</td></tr>
+                  <tr><td><code>command_chunk</code></td><td>Continuation packet of a long command (e.g. <code>checked-secrets-certdev-write</code> with a large certificate doesn't fit in a single USB packet and is sent in pieces). <strong>Not an error</strong> — purely a visual reflection of the physical split.</td></tr>
+                  <tr><td><code>crc_probe</code></td><td>Tester probes whether CRC mode is active. Deliberately sends a command <em>without</em> CRC. If the device replies <code>ERROR invalid-crc</code>, it means CRC <strong>is</strong> active (= probe succeeded).</td></tr>
+                  <tr><td><code>response_ok</code></td><td>Device replied <code>OK</code> or <code>OK NO</code>. <code>OK NO</code> = operation completed but the result is negative (e.g. lock-check says "unlocked").</td></tr>
+                  <tr><td><code>response_error</code></td><td>Device replied <code>ERROR</code>. Always critical (except for crc_probe replies, which are expected).</td></tr>
+                  <tr><td><code>response_progress</code></td><td>Progress status line (starting with <code>#</code>) — informational, not the operation outcome.</td></tr>
+                  <tr><td><code>response_data</code></td><td>Other device data not starting with <code>OK</code>, <code>ERROR</code> or <code>#</code>.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Detected problems</h4>
+              <table class="help-table">
+                <thead><tr><th>Class</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>timeout</code></td><td><strong>Tester sent a command and got no reply within 30 s.</strong> Either the device hung or the response didn't reach the host. Content shows actual latency (e.g. <code>Timeout 35000.0ms on checked-optiga-init</code>).</td></tr>
+                  <tr><td><code>incomplete_segment</code></td><td><strong>Previous command wasn't closed when a new one arrived.</strong> Example: tester sent command A, then B before A's reply, or a reconnect / device_change happened in between. The communication state is inconsistent — the device may or may not have processed A. <em>Note: a continuation packet of a chunked command (parent without CR/LF) is detected as <code>command_chunk</code>, not incomplete_segment — chunking is not an error. <strong>But</strong> if a chunked command is interrupted by <code>device_change</code> or <code>timeout</code>, incomplete_segment IS emitted because the reply will never arrive.</em></td></tr>
+                  <tr><td><code>reconnect</code></td><td>The gap between two bulk transfers exceeded 5 s — the device likely re-enumerated or restarted. Usually followed by a sequence of control transfers (re-enumeration).</td></tr>
+                  <tr><td><code>usb_error</code></td><td>USB physical-layer error (e.g. status <code>-71</code> = EPROTO = protocol error, signal integrity, DN/DP). When followed by <code>reconnect</code>, typically a device reset (info severity); isolated EPROTO without reconnect = critical.</td></tr>
+                  <tr><td><code>lost_urb</code></td><td>A USB Request Block was Submit-ted but no Complete arrived within 60 s. The message was "lost" in the driver or device.</td></tr>
+                  <tr><td><code>device_change</code></td><td>A packet appeared with a different <code>(bus, device_address)</code> tuple — typically a device swap or address reassignment after reconnect. One device session ends and another begins here.</td></tr>
+                </tbody>
+              </table>
+
+              <h4>Tags in the <em>Errors</em> table (after detectors)</h4>
+              <table class="help-table">
+                <thead><tr><th>event_type</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><code>missing_crc</code></td><td>A <code>checked-*</code> command was sent without a CRC suffix (8 hex chars at the end). In CRC mode the device rejects it.</td></tr>
+                  <tr><td><code>crc_mismatch</code></td><td>The CRC suffix doesn't match the computed CRC32 of the command body. Either tester bug or bus corruption.</td></tr>
+                  <tr><td><code>app_error</code></td><td>Application layer: device returned <code>ERROR …</code>.</td></tr>
+                  <tr><td><code>lock_regression</code></td><td>After a successful <code>checked-*-lock</code>, the following <code>lock-check</code> returned <code>OK NO</code> (= "unlocked"). Something unlocked itself when it shouldn't.</td></tr>
+                  <tr><td><code>timing_high</code> / <code>timing_critical</code></td><td>Command latency &gt;5× / &gt;15× higher than the median of its other invocations. The device is slowing something down.</td></tr>
+                  <tr><td><code>timing_suspiciously_low</code></td><td>Latency &lt;50% of the lowest observed minimum. Possibly a short-circuit in logic or a cached response.</td></tr>
+                  <tr><td><code>usb_eproto_isolated</code></td><td>EPROTO error not followed by reconnect — likely a permanent hardware issue.</td></tr>
+                  <tr><td><code>usb_eproto_reconnect</code></td><td>EPROTO error followed by reconnect — typically a device reset after watchdog timeout.</td></tr>
+                  <tr><td><code>usb_lost_urb</code></td><td>See above — Submit without Complete within the 60 s window.</td></tr>
+                  <tr><td><code>device_reconnect</code></td><td>Device reconnect (may be expected or unexpected depending on test context).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 5 ────────────────────────────────────────── -->
+            <div class="card" id="help-severity-en">
+              <h3>5. Severity levels</h3>
+              <table class="help-table">
+                <thead><tr><th>Level</th><th>Meaning</th></tr></thead>
+                <tbody>
+                  <tr><td><span class="badge badge-ok">ok</span></td><td>Normal state (successful response, valid command). Hidden under the default <em>warning+</em> filter.</td></tr>
+                  <tr><td><span class="badge badge-info">info</span></td><td>Informative (probe, progress, expected reconnect). Not a problem but worth noting.</td></tr>
+                  <tr><td><span class="badge badge-warning">warning</span></td><td>Something's not ideal (OK NO, higher latency, lost URB). Communication works but you should investigate.</td></tr>
+                  <tr><td><span class="badge badge-critical">critical</span></td><td>Definite problem (timeout, ERROR, missing CRC, isolated EPROTO). Test most likely failed.</td></tr>
+                  <tr><td><span class="badge badge-muted">suppressed</span></td><td>Manually hidden via API (for filtering out known false alarms).</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 6 ────────────────────────────────────────── -->
+            <div class="card" id="help-scenarios-en">
+              <h3>6. Common scenarios — what they mean in practice</h3>
+
+              <div class="scenario">
+                <h4>I only see <code>command_chunk</code> and no <code>command</code></h4>
+                <p>You're likely scrolled past the start. Look above for the parent <code>command</code> with the ⛓ marker (same <code>cmd_name</code>). Continuation chunks are italic / dimmed.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>After a <code>command</code> comes <code>incomplete_segment</code> and no <code>response_ok</code></h4>
+                <p>The tester sent a command but before its reply arrived, another command was sent or a reconnect happened. <strong>The previous command has no known reply</strong> — either the device didn't process it or the reply dropped. Check the causal context (right panel) — usually you'll find a <code>timeout</code> or <code>reconnect</code> just before.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>I see <code>timeout</code> then <code>response_error</code> for the next command</h4>
+                <p>Classic "domino effect": the device hung on the previous command, eventually recovered, but its internal state is corrupted → the next command fails. The right detail panel should show a <strong>causal hint</strong> like "Timeout on X before the error may have corrupted device state".</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Lots of <code>crc_probe</code> and <code>ERROR invalid-crc</code></h4>
+                <p>This is <strong>intentional</strong>. At startup the tester probes whether CRC mode is active. <code>crc-enable</code> without CRC → device returns <code>ERROR invalid-crc</code> = yes, CRC is on. Severity is info, not critical. To hide them, tick <em>hide probes</em>.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>I have 2 device sessions in the Sessions tab</h4>
+                <p>The capture contains a device swap or USB-address reassignment (typically after reconnect). Each session has its own serial in <code>OK XXXXXXXX</code> responses. The <code>device_change</code> meta event in Flow marks the boundary.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Command latency jumped from 10 ms to 300 ms</h4>
+                <p>The detector tags this as <code>timing_critical</code>. Possible causes: device doing a long operation (crypto, flash write), or USB bus contention. Check <code>response_progress</code> rows — if <code>#</code> messages arrive, the device is working; if it's silent, that's an anomaly.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>A command has a <span style="color: var(--accent);">⛓</span> icon next to it</h4>
+                <p><strong>Chunked command</strong> — the text was too long to fit in a single USB packet and got split by USB. The parent row contains the fully reassembled content (with a <code>[chunked: N pkts, M B]</code> suffix); below it follow <code>command_chunk</code> rows (italic / dimmed) — the continuation packets. <strong>Not an error.</strong></p>
+              </div>
+
+              <div class="scenario">
+                <h4>I'm searching for a specific DUT (HW piece)</h4>
+                <p>Open the <em>Sessions</em> tab, click <em>Load sessions and runs</em>, then type part of the serial into <strong>Search DUT SN</strong>. The filter is <strong>case-sensitive</strong>, supports <code>/regex/</code>. Click a row to jump to the DUT's first event in Flow.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>"Server lost the current capture — please re-upload"</h4>
+                <p>After a server restart the capture-id → file map is gone. The app automatically resets state and shows the upload zone. Upload the PCAP again. <em>The server attempts to persist the map to disk (<code>USB_ANALYSIS_STATE_DIR</code>) but the temporary PCAP files under <code>/tmp</code> get cleared periodically by the OS — then they must be re-uploaded.</em></p>
+              </div>
+
+              <div class="scenario">
+                <h4>I can't see normal command/response rows in Flow analyzer</h4>
+                <p>The severity filter defaults to <code>warning+</code>, which hides everyday <em>ok</em> events (successful commands + OK responses). Switch to <code>ALL</code> in the Severity selector to see the full stream.</p>
+              </div>
+
+              <div class="scenario">
+                <h4>Jump to a specific row</h4>
+                <p>Press <kbd>G</kbd> (as in "goto"), type the seq number, Enter. Works across filters. Works against a fully-loaded stream (no lazy fetching) — the jump is instant.</p>
+              </div>
+            </div>
+
+            <!-- 7 ────────────────────────────────────────── -->
+            <div class="card" id="help-keys-en">
+              <h3>7. Keyboard shortcuts</h3>
+              <table class="help-table">
+                <thead><tr><th>Key</th><th>Action</th></tr></thead>
+                <tbody>
+                  <tr><td><kbd>1</kbd>–<kbd>9</kbd></td><td>Switch tab by index (1 = Overview … 9 = Help)</td></tr>
+                  <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>Move between rows in the Flow analyzer</td></tr>
+                  <tr><td><kbd>PgUp</kbd> / <kbd>PgDn</kbd></td><td>Jump 20 rows</td></tr>
+                  <tr><td><kbd>P</kbd></td><td>Jump to paired event (cmd ↔ response)</td></tr>
+                  <tr><td><kbd>G</kbd></td><td>Focus the "Go to #" field — type seq number + <kbd>Enter</kbd></td></tr>
+                  <tr><td><kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd></td><td>Back / forward in navigation history</td></tr>
+                  <tr><td><kbd>Esc</kbd></td><td>Close any open modal (e.g. "About")</td></tr>
+                </tbody>
+              </table>
+              <p class="muted">Shortcuts are inactive while focus is in a text field (INPUT / TEXTAREA / SELECT).</p>
+            </div>
+
+            <!-- 8 ────────────────────────────────────────── -->
+            <div class="card" id="help-limits-en">
+              <h3>8. Upload limits &amp; configuration</h3>
+              <p>The current server-side limit values are visible in the <strong>About modal</strong> (click <em>USB Analysis</em> in the top-left corner → "Upload limits" section). Defaults:</p>
+              <table class="help-table">
+                <thead><tr><th>Limit</th><th>Default</th><th>Env variable</th></tr></thead>
+                <tbody>
+                  <tr><td>Single-file size</td><td>2 GB</td><td><code>USB_ANALYSIS_MAX_UPLOAD_BYTES</code></td></tr>
+                  <tr><td>Files per upload</td><td>64</td><td><code>USB_ANALYSIS_MAX_UPLOAD_FILES</code></td></tr>
+                  <tr><td>Aggregate multi-upload limit</td><td>16 GB</td><td><code>USB_ANALYSIS_MAX_UPLOAD_TOTAL_BYTES</code></td></tr>
+                  <tr><td>Flow LRU cache (analyzed captures)</td><td>16 entries</td><td><code>USB_ANALYSIS_FLOW_CACHE_MAX</code></td></tr>
+                  <tr><td>Capture-id map persistence</td><td><code>$TMPDIR/usb-analysis</code></td><td><code>USB_ANALYSIS_STATE_DIR</code></td></tr>
+                </tbody>
+              </table>
+              <p class="help-callout">
+                <strong>Watch out for the reverse proxy.</strong> An app running behind nginx / Cloudflare / Traefik may hit the proxy's <em>body-size limit</em> (often 1 MB – 100 MB). Large uploads will be cut off before reaching FastAPI. Configuration depends on the deploy — see the README "Reverse proxy" section.
+              </p>
+              <p class="muted">After a server restart the capture-id map is rehydrated from disk (<code>captures.json</code> under <code>STATE_DIR</code>) as long as the temporary PCAPs in <code>/tmp</code> still exist.</p>
+            </div>
+
+            </div><!-- end data-i18n-block="en" -->
+
           </div>
         </section>
 
-        <!-- ============ Export ============ -->
+        <!-- ============ Export -->
         <section class="tab-panel" data-panel="export" role="tabpanel">
           <div class="card">
-            <h3>Stáhnout flow analýzu</h3>
-            <p class="muted">Stáhne se aktuálně nahraný capture (a všechny jeho sessions).</p>
+            <h3 data-i18n="export.title">Stáhnout flow analýzu</h3>
+            <p class="muted" data-i18n="export.hint">Stáhne se aktuálně nahraný capture (a všechny jeho sessions).</p>
             <div class="export-grid">
               <a href="#" id="exportJson" class="export-card" download>
                 <span class="export-icon">{ }</span>
                 <span class="export-name">JSON</span>
-                <span class="export-desc">Kompletní stream + stats + sessions</span>
+                <span class="export-desc" data-i18n="export.json_desc">Kompletní stream + stats + sessions</span>
               </a>
               <a href="#" id="exportCsv" class="export-card" download>
                 <span class="export-icon">▦</span>
                 <span class="export-name">CSV</span>
-                <span class="export-desc">Tabulka eventů pro spreadsheet</span>
+                <span class="export-desc" data-i18n="export.csv_desc">Tabulka eventů pro spreadsheet</span>
               </a>
               <a href="#" id="exportHtml" class="export-card" download>
                 <span class="export-icon">&lt;/&gt;</span>
                 <span class="export-name">HTML report</span>
-                <span class="export-desc">Standalone náhled pro sdílení</span>
+                <span class="export-desc" data-i18n="export.html_desc">Standalone náhled pro sdílení</span>
               </a>
               <a href="#" id="exportJunit" class="export-card" download>
                 <span class="export-icon">✓</span>
                 <span class="export-name">JUnit XML</span>
-                <span class="export-desc">CI integrace (Jenkins, GitLab…)</span>
+                <span class="export-desc" data-i18n="export.junit_desc">CI integrace (Jenkins, GitLab…)</span>
               </a>
             </div>
           </div>
@@ -679,11 +1025,11 @@
   <div id="aboutOverlay" class="modal-overlay" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
     <div class="modal-card">
       <header class="modal-header">
-        <h2 id="aboutTitle">O aplikaci</h2>
-        <button type="button" class="modal-close" id="aboutClose" aria-label="Zavřít">×</button>
+        <h2 id="aboutTitle" data-i18n="about.title">O aplikaci</h2>
+        <button type="button" class="modal-close" id="aboutClose" data-i18n-aria-label="about.close" aria-label="Zavřít">×</button>
       </header>
       <div class="modal-body" id="aboutBody">
-        <div class="muted">Načítám…</div>
+        <div class="muted" data-i18n="about.loading">Načítám…</div>
       </div>
     </div>
   </div>
@@ -692,7 +1038,7 @@
     <div class="loading-modal">
       <div class="spinner" aria-hidden="true"></div>
       <div class="loading-text">
-        <div class="loading-title" id="loadingTitle">Načítám…</div>
+        <div class="loading-title" id="loadingTitle" data-i18n="loading.default">Načítám…</div>
         <div class="loading-detail" id="loadingDetail"></div>
       </div>
     </div>

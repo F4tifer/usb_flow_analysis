@@ -152,6 +152,34 @@ def test_baseline_rejects_disallowed_chars(client):
     assert r.status_code == 400
 
 
+def test_static_js_modules_parse_as_esm(client):
+    """Regression — every shipped /static/*.js file must be valid ECMAScript
+    Module source. Unescaped quotes inside a string literal once shipped
+    silently broke the whole UI (uploads, help, i18n switcher) because the
+    browser failed to load `i18n.js`. This guards against that class of bug.
+
+    We rely on the host having Node.js available; CI without Node should
+    skip rather than fail.
+    """
+    import shutil, subprocess, tempfile
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node not available")
+    targets = ["app.js", "i18n.js", "flow.js", "detail.js", "timeline.js"]
+    for name in targets:
+        r = client.get(f"/static/{name}")
+        assert r.status_code == 200, f"{name} not served"
+        with tempfile.NamedTemporaryFile(suffix=".mjs", delete=False, mode="w", encoding="utf-8") as f:
+            f.write(r.text)
+            path = f.name
+        try:
+            res = subprocess.run([node, "--check", path], capture_output=True, text=True, timeout=15)
+            assert res.returncode == 0, f"{name} failed ESM parse:\n{res.stderr}"
+        finally:
+            import os
+            os.unlink(path)
+
+
 def test_unknown_capture_id_returns_404(client):
     """Stale capture IDs (e.g. left over after server restart) must 404 with
     the exact message the JS recovery handler looks for."""

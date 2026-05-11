@@ -230,9 +230,9 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
                 ie = emit(ts=p.ts, direction='INTERNAL', layer='meta',
                           event_class='incomplete_segment',
                           content=(
-                              f'Nedokončený segment ({cur_cmd.cmd_name}) — '
+                              f'Incomplete segment ({cur_cmd.cmd_name}) — '
                               + ('chunked, ' if cur_cmd.is_chunked else '')
-                              + 'změna zařízení'
+                              + 'device change'
                           ),
                           cmd_name=cur_cmd.cmd_name,
                           severity='critical', outcome='incomplete',
@@ -248,9 +248,9 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
             emit(
                 ts=p.ts, direction='INTERNAL', layer='meta', event_class='device_change',
                 content=(
-                    f'Změna zařízení: bus {cur_device[0]}/dev {cur_device[1]}'
+                    f'Device change: bus {cur_device[0]}/dev {cur_device[1]}'
                     + (f' (tester {new_serial})' if new_serial else '')
-                    + (f' — předchozí tester: {prev_serial}' if prev_serial else '')
+                    + (f' — previous tester: {prev_serial}' if prev_serial else '')
                 ),
                 severity='info', outcome='device_change',
                 device_serial=new_serial,
@@ -276,7 +276,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
         expired = [u for u, ts in open_urbs.items() if p.ts - ts > cfg.urb_window_s]
         for u in expired:
             emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='lost_urb',
-                 content=f'URB {u} submit bez complete', severity='warning', outcome='lost_urb', source_file=p.source_file)
+                 content=f'URB {u} submit without complete', severity='warning', outcome='lost_urb', source_file=p.source_file)
             stats.lost_urbs += 1
             open_urbs.pop(u, None)
 
@@ -288,7 +288,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
             critical_ms = cfg.timeout_warning_ms * cfg.timeout_critical_multiplier
             sev = 'critical' if tms >= critical_ms else 'warning'
             te = emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='timeout',
-                      content=f'Timeout {tms:.1f}ms na {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
+                      content=f'Timeout {tms:.1f}ms on {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
                       severity=sev, outcome='timeout', latency_ms=tms, source_file=p.source_file)
             cur_cmd.paired_seq = te.seq
             stats.timeouts += 1
@@ -301,12 +301,12 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
 
         if p.xfer_type == 'bulk':
             if last_bulk_ts is not None and p.ts - last_bulk_ts > cfg.reconnect_gap_s:
-                emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='reconnect', content='Reconnect po delší mezeře',
+                emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='reconnect', content='Reconnect after a longer gap',
                      severity='info', outcome='reconnect', source_file=p.source_file)
                 stats.reconnects += 1
                 if segment_open and cur_cmd is not None:
                     emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='incomplete_segment',
-                         content=f'Nedokončený segment po {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
+                         content=f'Incomplete segment after {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
                          severity='critical', outcome='incomplete', source_file=p.source_file)
                     stats.incomplete_segments += 1
                     segment_open = False
@@ -380,7 +380,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
 
             if segment_open and cur_cmd is not None:
                 ie = emit(ts=p.ts, direction='INTERNAL', layer='meta', event_class='incomplete_segment',
-                          content=f'Nový příkaz před uzavřením: {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
+                          content=f'New command before previous was closed: {cur_cmd.cmd_name}', cmd_name=cur_cmd.cmd_name,
                           severity='critical', outcome='incomplete', source_file=p.source_file)
                 cur_cmd.paired_seq = ie.seq
                 stats.incomplete_segments += 1
@@ -422,7 +422,7 @@ def build_flow_stream(packets: list[UsbPacket], cfg: AnalysisConfig | None = Non
             if is_complete_line and cmd in cfg.device_sn_write_commands and args:
                 cur_dut_serial = args[0]
                 dut_serial_by_run[run_index] = cur_dut_serial
-            display_content = raw_text if is_complete_line else f'{raw_text[:160]}{"…" if len(raw_text) > 160 else ""}  [chunked, čekám…]'
+            display_content = raw_text if is_complete_line else f'{raw_text[:160]}{"…" if len(raw_text) > 160 else ""}  [chunked, awaiting…]'
             ev = emit(ts=p.ts, direction='HOST→DEV', layer='bulk',
                       event_class='crc_probe' if is_probe else 'command',
                       content=display_content, cmd_name=cmd, cmd_args=args, cmd_crc=crc,
